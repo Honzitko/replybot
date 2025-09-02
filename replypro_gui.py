@@ -43,7 +43,7 @@ class ReplyWorker(QThread):
         count = 0
         idx = 0
         # Slow down PyAutoGUI actions so the target app can keep up
-        pyautogui.PAUSE = 0.5
+        pyautogui.PAUSE = 1.0
         # Keep failsafe enabled so moving the mouse to a corner aborts the run
         pyautogui.FAILSAFE = True
 
@@ -51,7 +51,7 @@ class ReplyWorker(QThread):
         switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
         pyautogui.hotkey(*switch_keys)
         self.log.emit("Activated previous window.")
-        time.sleep(0.5)
+        time.sleep(1.0)
 
         while self._running and count < self.limit:
             # Like sequence: press J then L then R
@@ -70,7 +70,7 @@ class ReplyWorker(QThread):
             submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
             pyautogui.hotkey(*submit_keys)
             # Allow a brief moment for the comment to send
-            time.sleep(0.5)
+            time.sleep(1.0)
 
             count += 1
             self.log.emit(f"Replied #{count}: '{text}'")
