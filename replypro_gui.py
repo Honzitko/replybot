@@ -37,30 +37,33 @@ class ReplyWorker(QThread):
 
         count = 0
         idx = 0
-        pyautogui.PAUSE = 0.5
-        # Disable failsafe so the mouse in the corner doesn't abort the run
-        pyautogui.FAILSAFE = False
+        # Slow down PyAutoGUI actions so the target app can keep up
+        pyautogui.PAUSE = 1.0
+        pyautogui.FAILSAFE = True
 
         # Switch focus away from this window (expected browser is next)
         pyautogui.hotkey("alt", "tab")
         self.log.emit("Activated previous window.")
-        time.sleep(0.5)
+        # Give the OS time to bring the browser to the foreground
+        time.sleep(1.0)
 
         while self._running and count < self.limit:
             # Like sequence: press J then L then R
             pyautogui.press("j")
-            time.sleep(random.uniform(0.5, 1.0))
+            time.sleep(random.uniform(1.0, 1.5))
             pyautogui.press("l")
-            time.sleep(random.uniform(0.5, 1.0))
+            time.sleep(random.uniform(1.0, 1.5))
             pyautogui.press("r")
-            time.sleep(random.uniform(0.5, 1.0))
+            time.sleep(random.uniform(1.0, 1.5))
 
             text = self.replies[idx]
             idx = (idx + 1) % len(self.replies)
-            pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
-            time.sleep(random.uniform(0.3, 0.8))
+            pyautogui.typewrite(text, interval=random.uniform(0.08, 0.25))
+            time.sleep(random.uniform(0.5, 1.0))
             # On Windows the "send" shortcut is usually Ctrl+Enter
             pyautogui.hotkey("ctrl", "enter")
+            # Allow a brief moment for the comment to send
+            time.sleep(0.5)
 
             count += 1
             self.log.emit(f"Replied #{count}: '{text}'")
