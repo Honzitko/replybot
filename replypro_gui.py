@@ -15,6 +15,9 @@ import faulthandler
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
 
+# Determine platform once for hotkey selection
+IS_MAC = platform.system() == "Darwin"
+
 
 class ReplyWorker(QThread):
     """Background worker that types and posts replies automatically."""
@@ -45,7 +48,7 @@ class ReplyWorker(QThread):
         pyautogui.FAILSAFE = True
 
         # Switch focus to the previously active window (expected browser)
-        switch_keys = ("command", "tab") if platform.system() == "Darwin" else ("alt", "tab")
+        switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
         pyautogui.hotkey(*switch_keys)
         self.log.emit("Activated previous window.")
         time.sleep(0.5)
@@ -64,7 +67,7 @@ class ReplyWorker(QThread):
             pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
             time.sleep(random.uniform(0.3, 0.8))
             # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
-            submit_keys = ("command", "enter") if platform.system() == "Darwin" else ("ctrl", "enter")
+            submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
             pyautogui.hotkey(*submit_keys)
             # Allow a brief moment for the comment to send
             time.sleep(0.5)
