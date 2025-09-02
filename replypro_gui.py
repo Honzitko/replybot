@@ -46,8 +46,9 @@ class ReplyWorker(QThread):
 
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 1.0
-        # Keep failsafe enabled so moving the mouse to a corner aborts the run
-        pyautogui.FAILSAFE = True
+        # Disable failsafe so the mouse in the corner doesn't abort the run
+        pyautogui.FAILSAFE = False
+
 
         # Switch focus to the previously active window (expected browser)
         switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
@@ -167,7 +168,9 @@ class ReplyPRO(QWidget):
         self.worker.log.connect(self.log)
         self.worker.start()
 
-        self.log("Bot started. Ensure the browser is focused.")
+        self.log("Bot started. Switch to the browser window now.")
+        # Minimize the GUI so the browser receives keystrokes
+        self.showMinimized()
 
 
     def stop(self):
@@ -204,7 +207,14 @@ class ReplyPRO(QWidget):
         self.log("Settings loaded.")
 
 
+    def closeEvent(self, event):
+        """Save settings automatically when the window closes."""
+        self.save_settings()
+        event.accept()
+
+
 if __name__ == "__main__":
+
 
     app = QApplication(sys.argv)
     window = ReplyPRO()
@@ -212,3 +222,4 @@ if __name__ == "__main__":
     sys.exit(app.exec())
 
 main
+
