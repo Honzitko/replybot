@@ -15,6 +15,7 @@ import faulthandler
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
 
+
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
 
@@ -42,10 +43,12 @@ class ReplyWorker(QThread):
 
         count = 0
         idx = 0
+
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 1.0
         # Disable failsafe so the mouse in the corner doesn't abort the run
         pyautogui.FAILSAFE = False
+
 
         # Switch focus to the previously active window (expected browser)
         switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
@@ -66,11 +69,13 @@ class ReplyWorker(QThread):
             idx = (idx + 1) % len(self.replies)
             pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
             time.sleep(random.uniform(0.3, 0.8))
+
             # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
             submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
             pyautogui.hotkey(*submit_keys)
             # Allow a brief moment for the comment to send
             time.sleep(1.0)
+
 
             count += 1
             self.log.emit(f"Replied #{count}: '{text}'")
@@ -162,9 +167,11 @@ class ReplyPRO(QWidget):
         self.worker = ReplyWorker(replies, self.limit.value(), self.cadence.value())
         self.worker.log.connect(self.log)
         self.worker.start()
+
         self.log("Bot started. Switch to the browser window now.")
         # Minimize the GUI so the browser receives keystrokes
         self.showMinimized()
+
 
     def stop(self):
         if self.worker:
@@ -199,6 +206,7 @@ class ReplyPRO(QWidget):
         self.limit.setValue(data.get("limit", 50))
         self.log("Settings loaded.")
 
+
     def closeEvent(self, event):
         """Save settings automatically when the window closes."""
         self.save_settings()
@@ -206,7 +214,12 @@ class ReplyPRO(QWidget):
 
 
 if __name__ == "__main__":
+
+
     app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
     sys.exit(app.exec())
+
+main
+
