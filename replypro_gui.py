@@ -41,29 +41,22 @@ class ReplyWorker(QThread):
         idx = 0
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 0.5
-        # Disable failsafe so the mouse in a corner doesn't abort the run
-        pyautogui.FAILSAFE = False
-
-        # Switch focus away from this window (expected browser is next)
-        switch_keys = ("command", "tab") if platform.system() == "Darwin" else ("alt", "tab")
-        pyautogui.hotkey(*switch_keys)
-        self.log.emit("Activated previous window.")
-        # Give the OS time to bring the browser to the foreground
-        time.sleep(1.0)
+        # Keep failsafe enabled so moving the mouse to a corner aborts the run
+        pyautogui.FAILSAFE = True
 
         while self._running and count < self.limit:
             # Like sequence: press J then L then R
             pyautogui.press("j")
-            time.sleep(random.uniform(1.0, 1.5))
+            time.sleep(random.uniform(0.5, 1.0))
             pyautogui.press("l")
-            time.sleep(random.uniform(1.0, 1.5))
+            time.sleep(random.uniform(0.5, 1.0))
             pyautogui.press("r")
-            time.sleep(random.uniform(1.0, 1.5))
+            time.sleep(random.uniform(0.5, 1.0))
 
             text = self.replies[idx]
             idx = (idx + 1) % len(self.replies)
-            pyautogui.typewrite(text, interval=random.uniform(0.08, 0.25))
-            time.sleep(random.uniform(0.5, 1.0))
+            pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
+            time.sleep(random.uniform(0.3, 0.8))
             # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
             submit_keys = ("command", "enter") if platform.system() == "Darwin" else ("ctrl", "enter")
             pyautogui.hotkey(*submit_keys)
@@ -160,9 +153,7 @@ class ReplyPRO(QWidget):
         self.worker = ReplyWorker(replies, self.limit.value(), self.cadence.value())
         self.worker.log.connect(self.log)
         self.worker.start()
-        self.log("Bot started. Switch to the target window.")
-        # Minimize the GUI so the browser can stay in focus
-        self.showMinimized()
+        self.log("Bot started. Ensure the browser is focused.")
 
     def stop(self):
         if self.worker:
