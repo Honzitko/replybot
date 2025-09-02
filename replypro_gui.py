@@ -39,12 +39,13 @@ class ReplyWorker(QThread):
         count = 0
         idx = 0
         # Slow down PyAutoGUI actions so the target app can keep up
-        pyautogui.PAUSE = 1.0
+        pyautogui.PAUSE = 0.5
         # Keep failsafe active so moving the mouse to a corner aborts the run
         pyautogui.FAILSAFE = True
 
         # Switch focus away from this window (expected browser is next)
-        pyautogui.hotkey("alt", "tab")
+        switch_keys = ("command", "tab") if platform.system() == "Darwin" else ("alt", "tab")
+        pyautogui.hotkey(*switch_keys)
         self.log.emit("Activated previous window.")
         # Give the OS time to bring the browser to the foreground
         time.sleep(1.0)
