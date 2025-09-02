@@ -44,6 +44,7 @@ class ReplyWorker(QThread):
         count = 0
         idx = 0
 
+
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 1.0
         # Disable failsafe so the mouse in the corner doesn't abort the run
@@ -55,6 +56,7 @@ class ReplyWorker(QThread):
         pyautogui.hotkey(*switch_keys)
         self.log.emit("Activated previous window.")
         time.sleep(1.0)
+main
 
         while self._running and count < self.limit:
             # Like sequence: press J then L then R
@@ -168,10 +170,12 @@ class ReplyPRO(QWidget):
         self.worker.log.connect(self.log)
         self.worker.start()
 
+
         self.log("Bot started. Switch to the browser window now.")
         # Minimize the GUI so the browser receives keystrokes
         self.showMinimized()
 
+main
 
     def stop(self):
         if self.worker:
@@ -215,11 +219,8 @@ class ReplyPRO(QWidget):
 
 if __name__ == "__main__":
 
-
     app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
     sys.exit(app.exec())
-
 main
-
