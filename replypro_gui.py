@@ -44,6 +44,12 @@ class ReplyWorker(QThread):
         # Keep failsafe enabled so moving the mouse to a corner aborts the run
         pyautogui.FAILSAFE = True
 
+        # Switch focus to the previously active window (expected browser)
+        switch_keys = ("command", "tab") if platform.system() == "Darwin" else ("alt", "tab")
+        pyautogui.hotkey(*switch_keys)
+        self.log.emit("Activated previous window.")
+        time.sleep(0.5)
+
         while self._running and count < self.limit:
             # Like sequence: press J then L then R
             pyautogui.press("j")
@@ -193,4 +199,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
-    app.exec()
+    sys.exit(app.exec())
