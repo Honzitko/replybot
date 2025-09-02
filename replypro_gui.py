@@ -2,6 +2,7 @@ import os
 import json
 import time
 import random
+import platform
 import pyautogui
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel,
@@ -39,6 +40,7 @@ class ReplyWorker(QThread):
         idx = 0
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 1.0
+        # Keep failsafe active so moving the mouse to a corner aborts the run
         pyautogui.FAILSAFE = True
 
         # Switch focus away from this window (expected browser is next)
@@ -60,8 +62,9 @@ class ReplyWorker(QThread):
             idx = (idx + 1) % len(self.replies)
             pyautogui.typewrite(text, interval=random.uniform(0.08, 0.25))
             time.sleep(random.uniform(0.5, 1.0))
-            # On Windows the "send" shortcut is usually Ctrl+Enter
-            pyautogui.hotkey("ctrl", "enter")
+            # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
+            submit_keys = ("command", "enter") if platform.system() == "Darwin" else ("ctrl", "enter")
+            pyautogui.hotkey(*submit_keys)
             # Allow a brief moment for the comment to send
             time.sleep(0.5)
 
