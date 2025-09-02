@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import random
@@ -40,8 +41,8 @@ class ReplyWorker(QThread):
         idx = 0
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 0.5
-        # Keep failsafe active so moving the mouse to a corner aborts the run
-        pyautogui.FAILSAFE = True
+        # Disable failsafe so the mouse in a corner doesn't abort the run
+        pyautogui.FAILSAFE = False
 
         # Switch focus away from this window (expected browser is next)
         switch_keys = ("command", "tab") if platform.system() == "Darwin" else ("alt", "tab")
@@ -198,7 +199,7 @@ class ReplyPRO(QWidget):
 
 
 if __name__ == "__main__":
-    app = QApplication([])
+    app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
-    app.exec_()
+    app.exec()
