@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 import faulthandler
+import urllib.request
 
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
@@ -18,6 +19,15 @@ faulthandler.enable()
 
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
+
+
+def check_network(url: str = "https://www.google.com/generate_204", timeout: int = 5) -> bool:
+    """Return True if a lightweight GET request succeeds."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
+            return True
+    except Exception:
+        return False
 
 
 class ReplyWorker(QThread):
@@ -46,9 +56,11 @@ class ReplyWorker(QThread):
             idx = 0
 
             # Slow down PyAutoGUI actions so the target app can keep up
+
             # Make the pause quite long so each individual command gives the
             # browser plenty of time to respond.
             pyautogui.PAUSE = 4.0
+main
             # Disable failsafe so the mouse in the corner doesn't abort the run
             pyautogui.FAILSAFE = False
 
@@ -56,6 +68,7 @@ class ReplyWorker(QThread):
             switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
             pyautogui.hotkey(*switch_keys)
             self.log.emit("Activated previous window.")
+
             # Give the browser ample time to focus
             time.sleep(4.0)
 
@@ -67,22 +80,50 @@ class ReplyWorker(QThread):
                 time.sleep(random.uniform(3.0, 4.0))
                 pyautogui.press("r")
                 time.sleep(random.uniform(3.0, 4.0))
+main
 
                 text = self.replies[idx]
                 idx = (idx + 1) % len(self.replies)
                 pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
+
                 time.sleep(random.uniform(3.0, 4.0))
+main
 
                 # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
                 submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
                 pyautogui.hotkey(*submit_keys)
+
                 # Allow plenty of time for the comment to send
                 time.sleep(random.uniform(4.0, 5.0))
+
+
+                # Verify that the page reflects the expected state after sending
+                try:
+                    posted = pyautogui.locateOnScreen("comment_posted.png", confidence=0.8)
+                    error = pyautogui.locateOnScreen("error_popup.png", confidence=0.8)
+                except Exception as exc:
+                    posted = None
+                    error = None
+                    self.log.emit(f"Screen check failed: {exc}")
+
+                if not posted or error:
+                    self.log.emit("Screen state mismatch detected. Stopping worker.")
+                    screenshot = f"mismatch_{int(time.time())}.png"
+                    try:
+                        pyautogui.screenshot(screenshot)
+                        self.log.emit(f"Saved screenshot to {screenshot}")
+                    except Exception as exc:
+                        self.log.emit(f"Failed to save screenshot: {exc}")
+                    self._running = False
+                    break
+main
 
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
+
                 delay = self.cadence + random.randint(5, 10)
+main
                 self.log.emit(f"Waiting {delay}s...")
                 for _ in range(delay):
                     if not self._running:
