@@ -33,63 +33,65 @@ class ReplyWorker(QThread):
         self._running = True
 
     def run(self):
-        # initial countdown
-        for i in range(10, 0, -1):
-            if not self._running:
-                self.log.emit("Startup cancelled.")
-                return
-            self.log.emit(f"Starting in {i}...")
-            time.sleep(1)
-
-        count = 0
-        idx = 0
-
-
-        # Slow down PyAutoGUI actions so the target app can keep up
-        pyautogui.PAUSE = 1.0
-        # Disable failsafe so the mouse in the corner doesn't abort the run
-        pyautogui.FAILSAFE = False
-
-
-        # Switch focus to the previously active window (expected browser)
-        switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
-        pyautogui.hotkey(*switch_keys)
-        self.log.emit("Activated previous window.")
-        time.sleep(1.0)
-main
-
-        while self._running and count < self.limit:
-            # Like sequence: press J then L then R
-            pyautogui.press("j")
-            time.sleep(random.uniform(0.5, 1.0))
-            pyautogui.press("l")
-            time.sleep(random.uniform(0.5, 1.0))
-            pyautogui.press("r")
-            time.sleep(random.uniform(0.5, 1.0))
-
-            text = self.replies[idx]
-            idx = (idx + 1) % len(self.replies)
-            pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
-            time.sleep(random.uniform(0.3, 0.8))
-
-            # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
-            submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
-            pyautogui.hotkey(*submit_keys)
-            # Allow a brief moment for the comment to send
-            time.sleep(1.0)
-
-
-            count += 1
-            self.log.emit(f"Replied #{count}: '{text}'")
-
-            delay = self.cadence + random.randint(1, 4)
-            self.log.emit(f"Waiting {delay}s...")
-            for _ in range(delay):
+        try:
+            # initial countdown
+            for i in range(10, 0, -1):
                 if not self._running:
-                    break
+                    self.log.emit("Startup cancelled.")
+                    return
+                self.log.emit(f"Starting in {i}...")
                 time.sleep(1)
 
-        self.log.emit(f"Finished: {count} replies.")
+            count = 0
+            idx = 0
+
+            # Slow down PyAutoGUI actions so the target app can keep up
+            # Make the pause quite long so each individual command gives the
+            # browser plenty of time to respond.
+            pyautogui.PAUSE = 4.0
+            # Disable failsafe so the mouse in the corner doesn't abort the run
+            pyautogui.FAILSAFE = False
+
+            # Switch focus to the previously active window (expected browser)
+            switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
+            pyautogui.hotkey(*switch_keys)
+            self.log.emit("Activated previous window.")
+            # Give the browser ample time to focus
+            time.sleep(4.0)
+
+            while self._running and count < self.limit:
+                # Like sequence: press J then L then R
+                pyautogui.press("j")
+                time.sleep(random.uniform(3.0, 4.0))
+                pyautogui.press("l")
+                time.sleep(random.uniform(3.0, 4.0))
+                pyautogui.press("r")
+                time.sleep(random.uniform(3.0, 4.0))
+
+                text = self.replies[idx]
+                idx = (idx + 1) % len(self.replies)
+                pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
+                time.sleep(random.uniform(3.0, 4.0))
+
+                # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
+                submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
+                pyautogui.hotkey(*submit_keys)
+                # Allow plenty of time for the comment to send
+                time.sleep(random.uniform(4.0, 5.0))
+
+                count += 1
+                self.log.emit(f"Replied #{count}: '{text}'")
+
+                delay = self.cadence + random.randint(5, 10)
+                self.log.emit(f"Waiting {delay}s...")
+                for _ in range(delay):
+                    if not self._running:
+                        break
+                    time.sleep(1)
+
+            self.log.emit(f"Finished: {count} replies.")
+        except Exception as exc:
+            self.log.emit(f"Error: {exc}")
 
     def stop(self):
         self._running = False
@@ -175,8 +177,6 @@ class ReplyPRO(QWidget):
         # Minimize the GUI so the browser receives keystrokes
         self.showMinimized()
 
-main
-
     def stop(self):
         if self.worker:
             self.worker.stop()
@@ -223,4 +223,3 @@ if __name__ == "__main__":
     window = ReplyPRO()
     window.show()
     sys.exit(app.exec())
-main
