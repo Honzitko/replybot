@@ -47,7 +47,10 @@ class ReplyWorker(QThread):
             idx = 0
 
             # Configure PyAutoGUI for smoother, safer interactions
-            pyautogui.PAUSE = 0.5
+
+            # Use a longer pause to slow down consecutive actions so pages can load
+            pyautogui.PAUSE = 1.0
+main
             pyautogui.FAILSAFE = True
 
             # Switch focus to the previously active window (expected browser)
@@ -59,22 +62,39 @@ class ReplyWorker(QThread):
             while self._running and count < self.limit:
                 while self._paused and self._running:
                     time.sleep(0.1)
-                # Like sequence: press J then L then R
-                pyautogui.press("j")
-                time.sleep(random.uniform(0.5, 1.0))
+
+
+                # Move forward through a few posts with 'J'
+                jumps = random.randint(1, 3)
+                for _ in range(jumps):
+                    pyautogui.press("j")
+                    # give the platform time to load the next post
+                    time.sleep(random.uniform(3.0, 5.0))
+
+                # Like the current post
                 pyautogui.press("l")
-                time.sleep(random.uniform(0.5, 1.0))
+                time.sleep(random.uniform(2.0, 3.0))
+
+                # Open the reply field
                 pyautogui.press("r")
-                time.sleep(random.uniform(0.5, 1.0))
+                time.sleep(random.uniform(2.0, 3.0))
+main
 
                 text = self.replies[idx]
                 idx = (idx + 1) % len(self.replies)
                 pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
-                time.sleep(random.uniform(0.3, 0.8))
+
+                time.sleep(random.uniform(0.5, 1.0))
+
 
                 # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
                 submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
                 pyautogui.hotkey(*submit_keys)
+
+                # allow the comment to post fully
+                time.sleep(random.uniform(3.0, 5.0))
+
+main
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
