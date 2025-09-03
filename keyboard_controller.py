@@ -1,14 +1,13 @@
 import time
 from pynput.keyboard import Controller, Key
 
-# Mapping of string names to pynput Key constants
-_KEY_MAP = {
-    "enter": Key.enter,
-    "esc": Key.esc,
-    "tab": Key.tab,
-    "alt": Key.alt,
-    "command": Key.cmd,
-    "cmd": Key.cmd,
+# Mapping for synonymous key names.  The `Key` enum from pynput exposes
+# attributes such as ``Key.enter`` or ``Key.cmd``.  Rather than maintain a
+# large lookup table of every supported key we only provide aliases for the few
+# names that differ from the attribute on ``Key`` and fall back to the provided
+# string if no attribute exists.
+_ALIASES = {
+    "command": "cmd",
 }
 
 
@@ -19,7 +18,8 @@ class KeyboardController:
         self._controller = Controller()
 
     def _to_key(self, key: str):
-        return _KEY_MAP.get(key, key)
+        key = _ALIASES.get(key, key)
+        return getattr(Key, key, key)
 
     def press(self, key: str) -> None:
         k = self._to_key(key)
@@ -28,10 +28,11 @@ class KeyboardController:
 
     def hotkey(self, *keys: str) -> None:
         mapped = [self._to_key(k) for k in keys]
-        for k in mapped:
-            self._controller.press(k)
-        for k in reversed(mapped):
-            self._controller.release(k)
+        # `Controller.pressed` handles pressing the given keys on entry and
+        # releasing them on exit, ensuring they are released even if an error
+        # occurs while holding them.
+        with self._controller.pressed(*mapped):
+            pass
 
     def typewrite(self, text: str, interval: float = 0.0) -> None:
         for ch in text:
