@@ -96,8 +96,29 @@ class ReplyWorker(QThread):
                 # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
                 submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
                 pyautogui.hotkey(*submit_keys)
-                # Allow a brief moment for the comment to send
-                time.sleep(2.0)
+                self.log.emit("Waiting 10s for comment to post...")
+                # Allow ample time for the comment to post before verifying
+                time.sleep(10.0)
+
+                # Verify that the page reflects the expected state after sending
+                try:
+                    posted = pyautogui.locateOnScreen("comment_posted.png", confidence=0.8)
+                    error = pyautogui.locateOnScreen("error_popup.png", confidence=0.8)
+                except Exception as exc:
+                    posted = None
+                    error = None
+                    self.log.emit(f"Screen check failed: {exc}")
+
+                if not posted or error:
+                    self.log.emit("Screen state mismatch detected. Stopping worker.")
+                    screenshot = f"mismatch_{int(time.time())}.png"
+                    try:
+                        pyautogui.screenshot(screenshot)
+                        self.log.emit(f"Saved screenshot to {screenshot}")
+                    except Exception as exc:
+                        self.log.emit(f"Failed to save screenshot: {exc}")
+                    self._running = False
+                    break
 
                 # Verify that the page reflects the expected state after sending
                 try:
@@ -122,8 +143,8 @@ class ReplyWorker(QThread):
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
-                delay = self.cadence + random.randint(1, 4)
-                self.log.emit(f"Waiting {delay}s...")
+                delay = max(10, self.cadence + random.randint(1, 4))
+                self.log.emit(f"Waiting {delay}s before next reply...")
                 for _ in range(delay):
                     if not self._running:
                         break
@@ -189,7 +210,9 @@ class ReplyPRO(QWidget):
         self.pause_btn = QPushButton("Pause")
         self.pause_btn.clicked.connect(self.pause_or_resume)
         self.pause_btn.setEnabled(False)
+
         self.pause_btn.setObjectName("pause_btn")
+main
         btns.addWidget(self.pause_btn)
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)

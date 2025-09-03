@@ -16,6 +16,7 @@ def app():
     app.quit()
 
 
+
 def test_pause_button_exists_and_toggles(tmp_path, app):
     ReplyPRO.SETTINGS_FILE = str(tmp_path / "settings.json")
     window = ReplyPRO()
@@ -35,3 +36,4 @@ def test_pause_button_exists_and_toggles(tmp_path, app):
     window.pause_or_resume()
     assert not window.worker.is_paused()
     assert pause_button.text() == "Pause"
+main
