@@ -9,7 +9,9 @@ from PyQt5.QtWidgets import QApplication
 # Set Qt to run offscreen for headless environments
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+
 from replypro_gui import ReplyPRO, ReplyWorker
+
 
 @pytest.fixture(scope="module")
 def app():
@@ -41,7 +43,6 @@ def test_save_and_load_settings(tmp_path, app):
     assert window.cadence.value() == 7
     assert window.limit.value() == 3
 
-
 def test_worker_pause_resume():
     worker = ReplyWorker(["hi"], limit=1, cadence=1)
     assert worker._paused is False
@@ -49,3 +50,4 @@ def test_worker_pause_resume():
     assert worker._paused is True
     worker.resume()
     assert worker._paused is False
+

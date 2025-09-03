@@ -15,6 +15,7 @@ import faulthandler
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
 
+
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
 
@@ -30,7 +31,9 @@ class ReplyWorker(QThread):
         self.limit = limit
         self.cadence = cadence
         self._running = True
+
         self._paused = False
+
 
     def run(self):
         # initial countdown
@@ -43,6 +46,7 @@ class ReplyWorker(QThread):
 
         count = 0
         idx = 0
+
         # Slow down PyAutoGUI actions so the target app can keep up
         pyautogui.PAUSE = 0.5
         # Keep failsafe enabled so moving the mouse to a corner stops the bot
@@ -51,6 +55,7 @@ class ReplyWorker(QThread):
         while self._running and count < self.limit:
             while self._paused and self._running:
                 time.sleep(0.5)
+
 
             # Like sequence: press J then L then R
             pyautogui.press("j")
@@ -64,11 +69,13 @@ class ReplyWorker(QThread):
             idx = (idx + 1) % len(self.replies)
             pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
             time.sleep(random.uniform(0.3, 0.8))
+
             # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
             submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
             pyautogui.hotkey(*submit_keys)
             # Allow a brief moment for the comment to send
             time.sleep(1.0)
+
 
             count += 1
             self.log.emit(f"Replied #{count}: '{text}'")
@@ -78,8 +85,10 @@ class ReplyWorker(QThread):
             for _ in range(delay):
                 if not self._running:
                     break
+
                 while self._paused and self._running:
                     time.sleep(0.5)
+
                 time.sleep(1)
 
         self.log.emit(f"Finished: {count} replies.")
@@ -87,11 +96,13 @@ class ReplyWorker(QThread):
     def stop(self):
         self._running = False
 
+
     def pause(self):
         self._paused = True
 
     def resume(self):
         self._paused = False
+
 
 
 class ReplyPRO(QWidget):
@@ -126,14 +137,12 @@ class ReplyPRO(QWidget):
         row.addWidget(self.limit)
         layout.addLayout(row)
 
-        # Start/Pause/Stop buttons
+
         btns = QHBoxLayout()
         self.start_btn = QPushButton("Start")
         self.start_btn.clicked.connect(self.start)
         btns.addWidget(self.start_btn)
-        self.pause_btn = QPushButton("Pause")
-        self.pause_btn.clicked.connect(self.pause)
-        btns.addWidget(self.pause_btn)
+
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)
         btns.addWidget(self.stop_btn)
@@ -170,14 +179,18 @@ class ReplyPRO(QWidget):
             return
         self.worker = ReplyWorker(replies, self.limit.value(), self.cadence.value())
         self.worker.log.connect(self.log)
+
         self.worker.finished.connect(self.on_worker_finished)
         self.worker.start()
         self.pause_btn.setText("Pause")
         self.log("Bot started. Switch to the browser window now.")
 
+
+
     def stop(self):
         if self.worker:
             self.worker.stop()
+
             self.pause_btn.setText("Pause")
             self.log("Stop requested.")
 
@@ -193,9 +206,11 @@ class ReplyPRO(QWidget):
             self.pause_btn.setText("Pause")
             self.log("Resumed.")
 
-    def on_worker_finished(self):
-        self.pause_btn.setText("Pause")
-        self.worker = None
+
+
+
+            self.log("Stop requested.")
+
 
     # --- Settings handling -------------------------------------------------
     def save_settings(self):
@@ -225,6 +240,7 @@ class ReplyPRO(QWidget):
         self.limit.setValue(data.get("limit", 50))
         self.log("Settings loaded.")
 
+
     def closeEvent(self, event):
         """Save settings automatically when the window closes."""
         self.save_settings()
@@ -232,7 +248,11 @@ class ReplyPRO(QWidget):
 
 
 if __name__ == "__main__":
+main
     app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
     sys.exit(app.exec())
+
+main
+
