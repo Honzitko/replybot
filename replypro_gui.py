@@ -88,6 +88,11 @@ class ReplyWorker(QThread):
                 # Hit Enter to submit the reply and allow time for it to post
                 pyautogui.press("enter")
                 time.sleep(random.uniform(4.0, 6.0))
+
+                # Close the reply box so navigation shortcuts work on the next loop
+                pyautogui.press("esc")
+                time.sleep(random.uniform(1.0, 2.0))
+
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
