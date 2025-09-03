@@ -4,6 +4,8 @@ import json
 import time
 import random
 import platform
+import urllib.request
+import urllib.error
 from keyboard_controller import KeyboardController
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel,
@@ -18,6 +20,19 @@ faulthandler.enable()
 
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
+
+
+def has_internet(timeout: float = 5.0) -> bool:
+    """Check for a working internet connection.
+
+    A simple HTTP request is used; failures are silently ignored and ``False``
+    is returned so the caller can decide how to handle lack of connectivity.
+    """
+    try:
+        urllib.request.urlopen("https://www.google.com", timeout=timeout)
+        return True
+    except Exception:
+        return False
 
 
 class ReplyWorker(QThread):
@@ -36,8 +51,9 @@ class ReplyWorker(QThread):
 
     def run(self):
         try:
-            # initial countdown
-            for i in range(10, 0, -1):
+            # initial countdown – allow extra time for the user to focus the
+            # browser window and the page to finish loading
+            for i in range(15, 0, -1):
                 if not self._running:
                     self.log.emit("Startup cancelled.")
                     return
@@ -51,8 +67,10 @@ class ReplyWorker(QThread):
             switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
             self.keyboard.hotkey(*switch_keys)
             self.log.emit("Activated previous window.")
-            # Give the browser a moment to become active
-            time.sleep(3.0)
+            self.log.emit("Waiting for browser to load...")
+            # Give the browser additional time to become active and load
+            time.sleep(5.0)
+            self.log.emit("Ensure only one browser tab is open.")
 
             while self._running and count < self.limit:
                 while self._paused and self._running:
@@ -193,6 +211,9 @@ class ReplyPRO(QWidget):
         replies = [r.strip() for r in self.reply_input.toPlainText().splitlines() if r.strip()]
         if not replies:
             QMessageBox.warning(self, "No replies", "Add at least one reply.")
+            return
+        if not has_internet():
+            QMessageBox.warning(self, "No internet", "An active internet connection is required.")
             return
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "Running", "Bot already active.")
