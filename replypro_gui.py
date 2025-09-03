@@ -205,13 +205,18 @@ class ReplyPRO(QWidget):
         btns = QHBoxLayout()
         self.start_btn = QPushButton("Start")
         self.start_btn.clicked.connect(self.start)
+        self.start_btn.setObjectName("start_btn")
         btns.addWidget(self.start_btn)
         self.pause_btn = QPushButton("Pause")
         self.pause_btn.clicked.connect(self.pause_or_resume)
         self.pause_btn.setEnabled(False)
+
+        self.pause_btn.setObjectName("pause_btn")
+main
         btns.addWidget(self.pause_btn)
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)
+        self.stop_btn.setObjectName("stop_btn")
         btns.addWidget(self.stop_btn)
         layout.addLayout(btns)
 

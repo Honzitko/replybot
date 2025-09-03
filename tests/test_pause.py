@@ -16,19 +16,24 @@ def app():
     app.quit()
 
 
-def test_pause_button_toggles(tmp_path, app):
+
+def test_pause_button_exists_and_toggles(tmp_path, app):
     ReplyPRO.SETTINGS_FILE = str(tmp_path / "settings.json")
     window = ReplyPRO()
+
+    pause_button = window.findChild(QtWidgets.QPushButton, "pause_btn")
+    assert pause_button is not None
+    assert pause_button is window.pause_btn
+    assert not pause_button.isEnabled()
+
     window.worker = ReplyWorker(["hi"], 1, 1)
 
-    # Initially disabled
-    assert not window.pause_btn.isEnabled()
-
     # Enable manually for test and toggle
-    window.pause_btn.setEnabled(True)
+    pause_button.setEnabled(True)
     window.pause_or_resume()
     assert window.worker.is_paused()
-    assert window.pause_btn.text() == "Resume"
+    assert pause_button.text() == "Resume"
     window.pause_or_resume()
     assert not window.worker.is_paused()
-    assert window.pause_btn.text() == "Pause"
+    assert pause_button.text() == "Pause"
+main
