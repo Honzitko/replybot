@@ -56,7 +56,11 @@ class ReplyWorker(QThread):
             idx = 0
 
             # Slow down PyAutoGUI actions so the target app can keep up
-            pyautogui.PAUSE = 2.0
+
+            # Make the pause quite long so each individual command gives the
+            # browser plenty of time to respond.
+            pyautogui.PAUSE = 4.0
+main
             # Disable failsafe so the mouse in the corner doesn't abort the run
             pyautogui.FAILSAFE = False
 
@@ -64,37 +68,34 @@ class ReplyWorker(QThread):
             switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
             pyautogui.hotkey(*switch_keys)
             self.log.emit("Activated previous window.")
-            time.sleep(2.0)
+
+            # Give the browser ample time to focus
+            time.sleep(4.0)
 
             while self._running and count < self.limit:
-                if not check_network():
-                    self.log.emit("Network check failed. Stopping worker.")
-                    self._running = False
-                    QTimer.singleShot(
-                        0,
-                        lambda: QMessageBox.warning(
-                            None, "Network Error", "Network appears unreachable."
-                        ),
-                    )
-                    break
                 # Like sequence: press J then L then R
                 pyautogui.press("j")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(3.0, 4.0))
                 pyautogui.press("l")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(3.0, 4.0))
                 pyautogui.press("r")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(3.0, 4.0))
+main
 
                 text = self.replies[idx]
                 idx = (idx + 1) % len(self.replies)
                 pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
-                time.sleep(random.uniform(1.0, 2.0))
+
+                time.sleep(random.uniform(3.0, 4.0))
+main
 
                 # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
                 submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
                 pyautogui.hotkey(*submit_keys)
-                # Allow a brief moment for the comment to send
-                time.sleep(2.0)
+
+                # Allow plenty of time for the comment to send
+                time.sleep(random.uniform(4.0, 5.0))
+
 
                 # Verify that the page reflects the expected state after sending
                 try:
@@ -115,11 +116,14 @@ class ReplyWorker(QThread):
                         self.log.emit(f"Failed to save screenshot: {exc}")
                     self._running = False
                     break
+main
 
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
-                delay = self.cadence + random.randint(1, 4)
+
+                delay = self.cadence + random.randint(5, 10)
+main
                 self.log.emit(f"Waiting {delay}s...")
                 for _ in range(delay):
                     if not self._running:
