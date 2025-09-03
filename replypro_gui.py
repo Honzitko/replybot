@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 import faulthandler
+import urllib.request
 
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
@@ -18,6 +19,15 @@ faulthandler.enable()
 
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
+
+
+def check_network(url: str = "https://www.google.com/generate_204", timeout: int = 5) -> bool:
+    """Return True if a lightweight GET request succeeds."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
+            return True
+    except Exception:
+        return False
 
 
 class ReplyWorker(QThread):
@@ -57,6 +67,16 @@ class ReplyWorker(QThread):
             time.sleep(2.0)
 
             while self._running and count < self.limit:
+                if not check_network():
+                    self.log.emit("Network check failed. Stopping worker.")
+                    self._running = False
+                    QTimer.singleShot(
+                        0,
+                        lambda: QMessageBox.warning(
+                            None, "Network Error", "Network appears unreachable."
+                        ),
+                    )
+                    break
                 # Like sequence: press J then L then R
                 pyautogui.press("j")
                 time.sleep(random.uniform(1.5, 2.0))
