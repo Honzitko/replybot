@@ -96,6 +96,26 @@ class ReplyWorker(QThread):
                 # Allow a brief moment for the comment to send
                 time.sleep(2.0)
 
+                # Verify that the page reflects the expected state after sending
+                try:
+                    posted = pyautogui.locateOnScreen("comment_posted.png", confidence=0.8)
+                    error = pyautogui.locateOnScreen("error_popup.png", confidence=0.8)
+                except Exception as exc:
+                    posted = None
+                    error = None
+                    self.log.emit(f"Screen check failed: {exc}")
+
+                if not posted or error:
+                    self.log.emit("Screen state mismatch detected. Stopping worker.")
+                    screenshot = f"mismatch_{int(time.time())}.png"
+                    try:
+                        pyautogui.screenshot(screenshot)
+                        self.log.emit(f"Saved screenshot to {screenshot}")
+                    except Exception as exc:
+                        self.log.emit(f"Failed to save screenshot: {exc}")
+                    self._running = False
+                    break
+
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
