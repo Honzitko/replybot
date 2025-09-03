@@ -21,18 +21,41 @@ class KeyboardController:
         key = _ALIASES.get(key, key)
         return getattr(Key, key, key)
 
-    def press(self, key: str) -> None:
+    def press(self, key: str, delay: float = 0.0) -> None:
+        """Press and release ``key``.
+
+        Parameters
+        ----------
+        key:
+            Name of the key to press.  Values that match attributes on
+            ``pynput.keyboard.Key`` will be converted automatically, otherwise
+            the raw string is forwarded.
+        delay:
+            Optional delay in seconds to wait after the key is released.  A
+            small delay can improve reliability on some platforms and allows
+            more precise timing when sending a series of key presses.
+        """
+
         k = self._to_key(key)
         self._controller.press(k)
         self._controller.release(k)
+        if delay:
+            time.sleep(delay)
 
     def hotkey(self, *keys: str) -> None:
         mapped = [self._to_key(k) for k in keys]
-        # `Controller.pressed` handles pressing the given keys on entry and
-        # releasing them on exit, ensuring they are released even if an error
-        # occurs while holding them.
-        with self._controller.pressed(*mapped):
-            pass
+        # ``Controller.pressed`` is not guaranteed to exist on the object
+        # assigned to ``_controller`` (tests replace it with a simple dummy
+        # object).  Fall back to manually pressing and releasing the keys if the
+        # helper is missing.
+        if hasattr(self._controller, "pressed"):
+            with self._controller.pressed(*mapped):
+                pass
+        else:
+            for k in mapped:
+                self._controller.press(k)
+            for k in reversed(mapped):
+                self._controller.release(k)
 
     def typewrite(self, text: str, interval: float = 0.0) -> None:
         for ch in text:
