@@ -32,6 +32,9 @@ class ReplyWorker(QThread):
         self.cadence = cadence
         self._running = True
 
+        self._paused = False
+
+
     def run(self):
         # initial countdown
         for i in range(10, 0, -1):
@@ -44,21 +47,16 @@ class ReplyWorker(QThread):
         count = 0
         idx = 0
 
-
         # Slow down PyAutoGUI actions so the target app can keep up
-        pyautogui.PAUSE = 1.0
-        # Disable failsafe so the mouse in the corner doesn't abort the run
-        pyautogui.FAILSAFE = False
-
-
-        # Switch focus to the previously active window (expected browser)
-        switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
-        pyautogui.hotkey(*switch_keys)
-        self.log.emit("Activated previous window.")
-        time.sleep(1.0)
-main
+        pyautogui.PAUSE = 0.5
+        # Keep failsafe enabled so moving the mouse to a corner stops the bot
+        pyautogui.FAILSAFE = True
 
         while self._running and count < self.limit:
+            while self._paused and self._running:
+                time.sleep(0.5)
+
+
             # Like sequence: press J then L then R
             pyautogui.press("j")
             time.sleep(random.uniform(0.5, 1.0))
@@ -87,12 +85,24 @@ main
             for _ in range(delay):
                 if not self._running:
                     break
+
+                while self._paused and self._running:
+                    time.sleep(0.5)
+
                 time.sleep(1)
 
         self.log.emit(f"Finished: {count} replies.")
 
     def stop(self):
         self._running = False
+
+
+    def pause(self):
+        self._paused = True
+
+    def resume(self):
+        self._paused = False
+
 
 
 class ReplyPRO(QWidget):
@@ -127,11 +137,12 @@ class ReplyPRO(QWidget):
         row.addWidget(self.limit)
         layout.addLayout(row)
 
-        # Start/Stop buttons
+
         btns = QHBoxLayout()
         self.start_btn = QPushButton("Start")
         self.start_btn.clicked.connect(self.start)
         btns.addWidget(self.start_btn)
+
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)
         btns.addWidget(self.stop_btn)
@@ -168,19 +179,38 @@ class ReplyPRO(QWidget):
             return
         self.worker = ReplyWorker(replies, self.limit.value(), self.cadence.value())
         self.worker.log.connect(self.log)
+
+        self.worker.finished.connect(self.on_worker_finished)
         self.worker.start()
-
-
+        self.pause_btn.setText("Pause")
         self.log("Bot started. Switch to the browser window now.")
-        # Minimize the GUI so the browser receives keystrokes
-        self.showMinimized()
 
-main
+
 
     def stop(self):
         if self.worker:
             self.worker.stop()
+
+            self.pause_btn.setText("Pause")
             self.log("Stop requested.")
+
+    def pause(self):
+        if not self.worker or not self.worker.isRunning():
+            return
+        if self.pause_btn.text() == "Pause":
+            self.worker.pause()
+            self.pause_btn.setText("Resume")
+            self.log("Paused.")
+        else:
+            self.worker.resume()
+            self.pause_btn.setText("Pause")
+            self.log("Resumed.")
+
+
+
+
+            self.log("Stop requested.")
+
 
     # --- Settings handling -------------------------------------------------
     def save_settings(self):
@@ -218,9 +248,11 @@ main
 
 
 if __name__ == "__main__":
-
+main
     app = QApplication(sys.argv)
     window = ReplyPRO()
     window.show()
     sys.exit(app.exec())
+
 main
+
