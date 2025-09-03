@@ -4,7 +4,7 @@ import json
 import time
 import random
 import platform
-import pyautogui
+from keyboard_controller import KeyboardController
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel,
     QSpinBox, QHBoxLayout, QMessageBox
@@ -32,6 +32,7 @@ class ReplyWorker(QThread):
         self.cadence = cadence
         self._running = True
         self._paused = False
+        self.keyboard = KeyboardController()
 
     def run(self):
         try:
@@ -46,14 +47,9 @@ class ReplyWorker(QThread):
             count = 0
             idx = 0
 
-            # Configure PyAutoGUI for smoother, safer interactions
-            # Use a longer pause between actions so pages have time to load
-            pyautogui.PAUSE = 1.0
-            pyautogui.FAILSAFE = True
-
             # Switch focus to the previously active window (expected browser)
             switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
-            pyautogui.hotkey(*switch_keys)
+            self.keyboard.hotkey(*switch_keys)
             self.log.emit("Activated previous window.")
             # Give the browser a moment to become active
             time.sleep(3.0)
@@ -66,31 +62,31 @@ class ReplyWorker(QThread):
                 # Move forward through a few posts with 'J'
                 jumps = random.randint(1, 3)
                 for _ in range(jumps):
-                    pyautogui.press("j")
+                    self.keyboard.press("j")
                     # give the platform time to load the next post
                     time.sleep(random.uniform(3.0, 5.0))
 
                 # Like the current post
-                pyautogui.press("l")
+                self.keyboard.press("l")
                 time.sleep(random.uniform(2.0, 4.0))
 
                 # Open the reply field
-                pyautogui.press("r")
+                self.keyboard.press("r")
                 time.sleep(random.uniform(3.0, 5.0))
 
                 text = self.replies[idx]
                 idx = (idx + 1) % len(self.replies)
-                pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
+                self.keyboard.typewrite(text, interval=random.uniform(0.05, 0.2))
 
                 # brief pause before submitting the reply
                 time.sleep(random.uniform(0.5, 1.5))
 
                 # Hit Enter to submit the reply and allow time for it to post
-                pyautogui.press("enter")
+                self.keyboard.press("enter")
                 time.sleep(random.uniform(4.0, 6.0))
 
                 # Close the reply box so navigation shortcuts work on the next loop
-                pyautogui.press("esc")
+                self.keyboard.press("esc")
                 time.sleep(random.uniform(1.0, 2.0))
 
                 count += 1
