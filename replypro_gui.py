@@ -41,6 +41,7 @@ class ReplyWorker(QThread):
         self.limit = limit
         self.cadence = cadence
         self._running = True
+        self._paused = False
 
     def run(self):
         try:
@@ -67,6 +68,8 @@ class ReplyWorker(QThread):
             time.sleep(2.0)
 
             while self._running and count < self.limit:
+                while self._paused and self._running:
+                    time.sleep(0.1)
                 if not check_network():
                     self.log.emit("Network check failed. Stopping worker.")
                     self._running = False
@@ -124,6 +127,8 @@ class ReplyWorker(QThread):
                 for _ in range(delay):
                     if not self._running:
                         break
+                    while self._paused and self._running:
+                        time.sleep(0.1)
                     time.sleep(1)
 
             self.log.emit(f"Finished: {count} replies.")
@@ -132,6 +137,15 @@ class ReplyWorker(QThread):
 
     def stop(self):
         self._running = False
+
+    def pause(self):
+        self._paused = True
+
+    def resume(self):
+        self._paused = False
+
+    def is_paused(self):
+        return self._paused
 
 
 class ReplyPRO(QWidget):
@@ -166,11 +180,15 @@ class ReplyPRO(QWidget):
         row.addWidget(self.limit)
         layout.addLayout(row)
 
-        # Start/Stop buttons
+        # Start/Pause/Stop buttons
         btns = QHBoxLayout()
         self.start_btn = QPushButton("Start")
         self.start_btn.clicked.connect(self.start)
         btns.addWidget(self.start_btn)
+        self.pause_btn = QPushButton("Pause")
+        self.pause_btn.clicked.connect(self.pause_or_resume)
+        self.pause_btn.setEnabled(False)
+        btns.addWidget(self.pause_btn)
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)
         btns.addWidget(self.stop_btn)
@@ -209,6 +227,9 @@ class ReplyPRO(QWidget):
         self.worker.log.connect(self.log)
         self.worker.start()
 
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText("Pause")
+
 
         self.log("Bot started. Switch to the browser window now.")
         # Minimize the GUI so the browser receives keystrokes
@@ -218,6 +239,20 @@ class ReplyPRO(QWidget):
         if self.worker:
             self.worker.stop()
             self.log("Stop requested.")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText("Pause")
+
+    def pause_or_resume(self):
+        if not self.worker:
+            return
+        if not self.worker.is_paused():
+            self.worker.pause()
+            self.pause_btn.setText("Resume")
+            self.log("Pause requested.")
+        else:
+            self.worker.resume()
+            self.pause_btn.setText("Pause")
+            self.log("Resume requested.")
 
     # --- Settings handling -------------------------------------------------
     def save_settings(self):
