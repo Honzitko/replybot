@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 import faulthandler
-import urllib.request
 
 # Enable faulthandler to help debug crashes
 faulthandler.enable()
@@ -19,15 +18,6 @@ faulthandler.enable()
 
 # Determine platform once for hotkey selection
 IS_MAC = platform.system() == "Darwin"
-
-
-def check_network(url: str = "https://www.google.com/generate_204", timeout: int = 5) -> bool:
-    """Return True if a lightweight GET request succeeds."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout):
-            return True
-    except Exception:
-        return False
 
 
 class ReplyWorker(QThread):
@@ -56,10 +46,9 @@ class ReplyWorker(QThread):
             count = 0
             idx = 0
 
-            # Slow down PyAutoGUI actions so the target app can keep up
-            pyautogui.PAUSE = 2.0
-            # Disable failsafe so the mouse in the corner doesn't abort the run
-            pyautogui.FAILSAFE = False
+            # Configure PyAutoGUI for smoother, safer interactions
+            pyautogui.PAUSE = 0.5
+            pyautogui.FAILSAFE = True
 
             # Switch focus to the previously active window (expected browser)
             switch_keys = ("command", "tab") if IS_MAC else ("alt", "tab")
@@ -70,81 +59,27 @@ class ReplyWorker(QThread):
             while self._running and count < self.limit:
                 while self._paused and self._running:
                     time.sleep(0.1)
-                if not check_network():
-                    self.log.emit("Network check failed. Stopping worker.")
-                    self._running = False
-                    QTimer.singleShot(
-                        0,
-                        lambda: QMessageBox.warning(
-                            None, "Network Error", "Network appears unreachable."
-                        ),
-                    )
-                    break
                 # Like sequence: press J then L then R
                 pyautogui.press("j")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(0.5, 1.0))
                 pyautogui.press("l")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(0.5, 1.0))
                 pyautogui.press("r")
-                time.sleep(random.uniform(1.5, 2.0))
+                time.sleep(random.uniform(0.5, 1.0))
 
                 text = self.replies[idx]
                 idx = (idx + 1) % len(self.replies)
                 pyautogui.typewrite(text, interval=random.uniform(0.05, 0.2))
-                time.sleep(random.uniform(1.0, 2.0))
+                time.sleep(random.uniform(0.3, 0.8))
 
                 # Platform-specific "send" shortcut (Ctrl+Enter on Windows, Cmd+Enter on macOS)
                 submit_keys = ("command", "enter") if IS_MAC else ("ctrl", "enter")
                 pyautogui.hotkey(*submit_keys)
-                self.log.emit("Waiting 10s for comment to post...")
-                # Allow ample time for the comment to post before verifying
-                time.sleep(10.0)
-
-                # Verify that the page reflects the expected state after sending
-                try:
-                    posted = pyautogui.locateOnScreen("comment_posted.png", confidence=0.8)
-                    error = pyautogui.locateOnScreen("error_popup.png", confidence=0.8)
-                except Exception as exc:
-                    posted = None
-                    error = None
-                    self.log.emit(f"Screen check failed: {exc}")
-
-                if not posted or error:
-                    self.log.emit("Screen state mismatch detected. Stopping worker.")
-                    screenshot = f"mismatch_{int(time.time())}.png"
-                    try:
-                        pyautogui.screenshot(screenshot)
-                        self.log.emit(f"Saved screenshot to {screenshot}")
-                    except Exception as exc:
-                        self.log.emit(f"Failed to save screenshot: {exc}")
-                    self._running = False
-                    break
-
-                # Verify that the page reflects the expected state after sending
-                try:
-                    posted = pyautogui.locateOnScreen("comment_posted.png", confidence=0.8)
-                    error = pyautogui.locateOnScreen("error_popup.png", confidence=0.8)
-                except Exception as exc:
-                    posted = None
-                    error = None
-                    self.log.emit(f"Screen check failed: {exc}")
-
-                if not posted or error:
-                    self.log.emit("Screen state mismatch detected. Stopping worker.")
-                    screenshot = f"mismatch_{int(time.time())}.png"
-                    try:
-                        pyautogui.screenshot(screenshot)
-                        self.log.emit(f"Saved screenshot to {screenshot}")
-                    except Exception as exc:
-                        self.log.emit(f"Failed to save screenshot: {exc}")
-                    self._running = False
-                    break
-
                 count += 1
                 self.log.emit(f"Replied #{count}: '{text}'")
 
-                delay = max(10, self.cadence + random.randint(1, 4))
-                self.log.emit(f"Waiting {delay}s before next reply...")
+                delay = self.cadence + random.randint(1, 4)
+                self.log.emit(f"Waiting {delay}s...")
                 for _ in range(delay):
                     if not self._running:
                         break
@@ -212,7 +147,6 @@ class ReplyPRO(QWidget):
         self.pause_btn.setEnabled(False)
 
         self.pause_btn.setObjectName("pause_btn")
-main
         btns.addWidget(self.pause_btn)
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop)
