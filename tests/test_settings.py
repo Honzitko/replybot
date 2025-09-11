@@ -3,13 +3,17 @@ import pytest
 
 # Use pytest.importorskip so the test suite is skipped if PyQt5 or its
 # dependencies (e.g., libGL) are unavailable in the execution environment.
-QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+QtWidgets = pytest.importorskip(
+    "PyQt5.QtWidgets", reason="requires PyQt5", exc_type=ImportError
+)
 from PyQt5.QtWidgets import QApplication
 
 # Set Qt to run offscreen for headless environments
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-replypro_gui = pytest.importorskip("replypro_gui")
+replypro_gui = pytest.importorskip(
+    "replypro_gui", reason="requires replypro_gui", exc_type=ImportError
+)
 ReplyPRO = replypro_gui.ReplyPRO
 
 @pytest.fixture(scope="module")

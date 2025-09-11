@@ -1,12 +1,16 @@
 import os
 import pytest
 
-QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+QtWidgets = pytest.importorskip(
+    "PyQt5.QtWidgets", reason="requires PyQt5", exc_type=ImportError
+)
 from PyQt5.QtWidgets import QApplication
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-replypro_gui = pytest.importorskip("replypro_gui")
+replypro_gui = pytest.importorskip(
+    "replypro_gui", reason="requires replypro_gui", exc_type=ImportError
+)
 ReplyPRO = replypro_gui.ReplyPRO
 ReplyWorker = replypro_gui.ReplyWorker
 

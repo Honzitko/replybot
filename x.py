@@ -40,7 +40,11 @@ from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
 from urllib.parse import quote as url_quote
 from pynput import keyboard as pynkeyboard
 from keyboard_controller import KeyboardController, is_app_generated
-import requests
+
+try:
+    import requests
+except Exception:  # pragma: no cover - optional dependency
+    requests = None
 
 try:
     import pyperclip
@@ -75,6 +79,8 @@ BASE_WAIT = 3
 MAX_WAIT = 15
 
 def ensure_connection(url: str, timeout: float) -> float:
+    if requests is None:
+        raise RuntimeError("requests library is required for ensure_connection")
     start = time.time()
     try:
         resp = requests.get(url, timeout=timeout, stream=True)
