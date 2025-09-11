@@ -30,6 +30,7 @@ import time
 import queue
 import random
 import threading
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from typing import List, Tuple, Optional, Dict, Set
@@ -39,6 +40,7 @@ from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
 from urllib.parse import quote as url_quote
 from pynput import keyboard as pynkeyboard
 from keyboard_controller import KeyboardController, is_app_generated
+import requests
 
 try:
     import pyperclip
@@ -68,6 +70,19 @@ def similarity_ratio(a: str, b: str) -> float:
     if not ta or not tb: return 0.0
     inter = len(ta & tb); union = len(ta | tb)
     return inter / max(1, union)
+
+BASE_WAIT = 3
+MAX_WAIT = 15
+
+def ensure_connection(url: str, timeout: float) -> float:
+    start = time.time()
+    try:
+        resp = requests.get(url, timeout=timeout, stream=True)
+        resp.raise_for_status()
+        return time.time() - start
+    except Exception as e:
+        logging.error(f"Connection check failed for {url}: {e}")
+        raise
 
 def build_search_url(query: str, mode: str) -> str:
     """
@@ -284,6 +299,12 @@ class SchedulerWorker(threading.Thread):
             self._log("INFO", f"Search tab already open for policy '{self.search_open_policy}'. Reusing existing tab.")
             return
         url = build_search_url(query, self.search_mode)
+        try:
+            elapsed = ensure_connection(url, timeout=5)
+            self._log("INFO", f"Connection verified in {elapsed:.2f}s")
+        except Exception as e:
+            self._log("ERROR", f"Connection check failed: {e}")
+            return
         self._log("INFO", f"Open search: {url}")
         try:
             self.kb.hotkey("ctrl", "l")  # focus address bar
@@ -292,7 +313,18 @@ class SchedulerWorker(threading.Thread):
             self.kb.press("enter")
         except Exception as e:
             self._log("ERROR", f"Browser navigation failed: {e}")
-        self._pauseable_sleep(jitter(1.0, 1.6))
+            return
+        start = time.time()
+        waited = 0.0
+        while not self.stop_event.is_set():
+            self._pauseable_sleep(0.5)
+            waited = time.time() - start
+            if waited >= BASE_WAIT and (waited >= elapsed or waited >= MAX_WAIT):
+                break
+        if waited >= MAX_WAIT:
+            self._log("WARN", f"Page load wait exceeded {MAX_WAIT}s; consider retry.")
+        else:
+            self._log("INFO", f"Page ready after {waited:.2f}s")
         self._mark_opened(section_name)
 
     def _push_to_clipboard(self, text: str):
