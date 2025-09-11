@@ -1,4 +1,5 @@
-import pynput.keyboard as pk
+import pytest
+pk = pytest.importorskip("pynput.keyboard")
 from keyboard_controller import KeyboardController
 
 
