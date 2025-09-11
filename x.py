@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-main
 r"""
 X Scheduler (Manual/Compliant Edition)
 --------------------------------------
@@ -876,4 +875,3 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
     app.mainloop()
-main
