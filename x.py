@@ -508,14 +508,6 @@ class App(tk.Tk):
         ttk.Button(f, text="Uložit", command=self.save_profile).grid(row=0, column=3, padx=6)
         ttk.Button(f, text="Uložit jako…", command=self.save_profile_as).grid(row=0, column=4, padx=6)
 
-    def _on_global_key(self, key):
-        if is_app_generated():
-            return
-        if not self.pause_event.is_set():
-            self.pause_event.set()
-            self._append_log("INFO", "Paused due to user input.")
-            self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
-
         self.lbl_dirty = ttk.Label(f, text="", foreground="#b36b00")
         self.lbl_dirty.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10,0))
 
@@ -538,6 +530,14 @@ class App(tk.Tk):
         cb2.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
         ttk.Label(row3, text="Popular → typed_query; Latest → &f=live. Open policy controls how often a tab is opened.").grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(6,2))
+
+    def _on_global_key(self, key):
+        if is_app_generated():
+            return
+        if not self.pause_event.is_set():
+            self.pause_event.set()
+            self._append_log("INFO", "Paused due to user input.")
+            self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
 
     def _build_session_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
