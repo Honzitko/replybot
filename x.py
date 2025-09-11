@@ -36,8 +36,9 @@ from typing import List, Tuple, Optional, Dict, Set
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
-import webbrowser
 from urllib.parse import quote as url_quote
+from pynput import keyboard as pynkeyboard
+from keyboard_controller import KeyboardController, is_app_generated
 
 try:
     import pyperclip
@@ -118,12 +119,22 @@ DEFAULT_SECTIONS_SEED = [
 
 # ---- Worker (manual flow, no key simulation)
 class SchedulerWorker(threading.Thread):
-    def __init__(self, cfg: Dict, sections: List[Section], logq: queue.Queue, stop_event: threading.Event):
+    def __init__(
+        self,
+        cfg: Dict,
+        sections: List[Section],
+        logq: queue.Queue,
+        stop_event: threading.Event,
+        pause_event: threading.Event,
+        kb,
+    ):
         super().__init__(daemon=True)
         self.cfg = cfg
         self.sections = sections
         self.logq = logq
         self.stop_event = stop_event
+        self.pause_event = pause_event
+        self.kb = kb
 
         self.session_seconds = int(rand_hours(self.cfg["session_hours_range"]) * 3600)
         self.session_start = datetime.now(CET)
@@ -172,11 +183,23 @@ class SchedulerWorker(threading.Thread):
 
     def _in_night_sleep(self, now): return self.night_sleep_start <= now <= self.night_sleep_end
 
+    def _wait_if_paused(self):
+        while self.pause_event.is_set() and not self.stop_event.is_set():
+            time.sleep(0.5)
+
+    def _pauseable_sleep(self, duration: float, chunk: float = 1.0):
+        end = time.time() + duration
+        while time.time() < end and not self.stop_event.is_set():
+            if self.pause_event.is_set():
+                self._wait_if_paused()
+                continue
+            remaining = end - time.time()
+            time.sleep(min(chunk, remaining))
+
     def _sleep_until(self, dt):
         delta = max(0.0, (dt - datetime.now(CET)).total_seconds())
         self._log("INFO", f"Sleeping {delta:.0f}s until {dt}")
-        while delta > 0 and not self.stop_event.is_set():
-            time.sleep(min(30, delta)); delta -= 30
+        self._pauseable_sleep(delta, chunk=30)
 
     def _schedule_next_micro_pause(self):
         n_min, n_max = self.cfg["micro_pause_every_n_actions_range"]
@@ -186,22 +209,16 @@ class SchedulerWorker(threading.Thread):
         if self.action_counter >= self.next_micro_pause_at:
             dur = jitter(*self.cfg["micro_pause_seconds_range"])
             self._log("INFO", f"Micro pause {dur:.1f}s")
-            t = dur
-            while t > 0 and not self.stop_event.is_set():
-                time.sleep(min(1.0, t)); t -= 1.0
+            self._pauseable_sleep(dur)
             self.next_micro_pause_at = self._schedule_next_micro_pause()
 
     def _cooldown(self):
         base = jitter(*self.cfg["min_seconds_between_actions_range"])
-        t = base
-        while t > 0 and not self.stop_event.is_set():
-            time.sleep(min(1.0, t)); t -= 1.0
+        self._pauseable_sleep(base)
         if random.random() < self.cfg["extra_jitter_probability"] and not self.stop_event.is_set():
             extra = jitter(*self.cfg["extra_jitter_seconds_range"])
             self._log("DEBUG", f"Extra idle jitter {extra:.1f}s")
-            t = extra
-            while t > 0 and not self.stop_event.is_set():
-                time.sleep(min(1.0, t)); t -= 1.0
+            self._pauseable_sleep(extra)
 
     def _bump_counters(self):
         now = datetime.now(CET)
@@ -269,10 +286,13 @@ class SchedulerWorker(threading.Thread):
         url = build_search_url(query, self.search_mode)
         self._log("INFO", f"Open search: {url}")
         try:
-            webbrowser.open(url, new=0, autoraise=True)  # new=0 → reuse window (still opens a tab)
+            self.kb.hotkey("ctrl", "l")  # focus address bar
+            time.sleep(0.1)
+            self.kb.typewrite(url)
+            self.kb.press("enter")
         except Exception as e:
-            self._log("ERROR", f"Browser open failed: {e}")
-        time.sleep(jitter(1.0, 1.6))
+            self._log("ERROR", f"Browser navigation failed: {e}")
+        self._pauseable_sleep(jitter(1.0, 1.6))
         self._mark_opened(section_name)
 
     def _push_to_clipboard(self, text: str):
@@ -285,12 +305,20 @@ class SchedulerWorker(threading.Thread):
         except Exception as e:
             self._log("ERROR", f"Clipboard copy failed: {e}")
 
+    def _send_reply(self, text: str):
+        self._push_to_clipboard(text)
+        time.sleep(0.1)
+        self.kb.hotkey("ctrl", "v")
+        time.sleep(0.1)
+        self.kb.press("enter")
+
     def run(self):
         self._log("INFO", f"Session start {self.session_start} | ends by {self.session_end}")
         self._log("INFO", f"Night sleep: {self.night_sleep_start} → {self.night_sleep_end}")
         self._log("INFO", f"Daily cap={self.daily_cap} | Hourly cap={self.hourly_cap} | Search mode={self.search_mode} | Open policy={self.search_open_policy}")
         try:
             while datetime.now(CET) < self.session_end and not self.stop_event.is_set():
+                self._wait_if_paused()
                 now = datetime.now(CET)
                 if self._in_night_sleep(now):
                     self._log("INFO", "Night sleep window active.")
@@ -313,6 +341,7 @@ class SchedulerWorker(threading.Thread):
 
                 for section in sections:
                     if self.stop_event.is_set() or datetime.now(CET) >= step_deadline: break
+                    self._wait_if_paused()
                     max_responses = max(1, section.pick_max_responses())
                     self._log("INFO", f"Section → {section.name} (limit {max_responses})")
 
@@ -327,9 +356,9 @@ class SchedulerWorker(threading.Thread):
                         if processed >= targets_goal: break
                         if not self._caps_remaining(): break
 
+                        self._wait_if_paused()
                         self._micro_pause_if_due()
 
-                        # Choose a response; copy to clipboard; user performs like/reply
                         reply_text = section.pick_response() or "Starting strong and staying consistent."
                         if not self._allowed_for_text(reply_text):
                             continue
@@ -337,10 +366,8 @@ class SchedulerWorker(threading.Thread):
                         if self.cfg.get("transparency_tag_enabled", False):
                             reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
 
-                        self._log("INFO", f"[MANUAL] Use this reply → {reply_text!r}")
-                        self._push_to_clipboard(reply_text)
-
-                        # Wait to let you act
+                        self._log("INFO", f"Replying → {reply_text!r}")
+                        self._send_reply(reply_text)
                         self._cooldown()
 
                         self._record_reply(reply_text)
@@ -375,6 +402,8 @@ class App(tk.Tk):
 
         self.logq: queue.Queue[str] = queue.Queue()
         self.stop_event = threading.Event()
+        self.pause_event = threading.Event()
+        self.kb = KeyboardController()
         self.worker: Optional[SchedulerWorker] = None
 
         self.current_profile: Optional[str] = None
@@ -383,6 +412,10 @@ class App(tk.Tk):
         self._build_ui()
         self._init_default_profile()
         self.after(120, self._drain_logs)
+
+        # global keyboard listener to auto-pause on manual input
+        self._key_listener = pynkeyboard.Listener(on_press=self._on_global_key)
+        self._key_listener.start()
 
     # UI scaffolding
     def _build_ui(self):
@@ -415,9 +448,13 @@ class App(tk.Tk):
         # bottom bar
         bar = ttk.Frame(self); bar.pack(fill="x", padx=8, pady=6)
         self.btn_start = ttk.Button(bar, text="Start", command=self.start_clicked)
+        self.btn_pause = ttk.Button(bar, text="Pause", command=self.pause_clicked, state="disabled")
+        self.btn_resume = ttk.Button(bar, text="Resume", command=self.resume_clicked, state="disabled")
         self.btn_stop = ttk.Button(bar, text="Stop", command=self.stop_clicked, state="disabled")
         self.lbl_status = ttk.Label(bar, text="Profil: —")
         self.btn_start.pack(side="left")
+        self.btn_pause.pack(side="left", padx=8)
+        self.btn_resume.pack(side="left", padx=8)
         self.btn_stop.pack(side="left", padx=8)
         self.lbl_status.pack(side="right")
 
@@ -432,6 +469,14 @@ class App(tk.Tk):
         ttk.Button(f, text="Načíst", command=self.load_profile).grid(row=0, column=2, padx=6)
         ttk.Button(f, text="Uložit", command=self.save_profile).grid(row=0, column=3, padx=6)
         ttk.Button(f, text="Uložit jako…", command=self.save_profile_as).grid(row=0, column=4, padx=6)
+
+    def _on_global_key(self, key):
+        if is_app_generated():
+            return
+        if not self.pause_event.is_set():
+            self.pause_event.set()
+            self._append_log("INFO", "Paused due to user input.")
+            self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
 
         self.lbl_dirty = ttk.Label(f, text="", foreground="#b36b00")
         self.lbl_dirty.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10,0))
@@ -627,11 +672,14 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Invalid input", str(e)); return
 
-        self._append_log("INFO", "Starting (manual mode)…")
+        self._append_log("INFO", "Starting…")
         self.stop_event.clear()
-        self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event)
+        self.pause_event.clear()
+        self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event, self.pause_event, self.kb)
         self.worker.start()
         self.btn_start.configure(state="disabled")
+        self.btn_pause.configure(state="normal")
+        self.btn_resume.configure(state="disabled")
         self.btn_stop.configure(state="normal")
 
     def stop_clicked(self):
@@ -640,6 +688,22 @@ class App(tk.Tk):
             self.stop_event.set()
         self.btn_stop.configure(state="disabled")
         self.btn_start.configure(state="normal")
+        self.btn_pause.configure(state="disabled")
+        self.btn_resume.configure(state="disabled")
+
+    def pause_clicked(self):
+        if not self.pause_event.is_set():
+            self.pause_event.set()
+            self._append_log("INFO", "Paused.")
+            self.btn_pause.configure(state="disabled")
+            self.btn_resume.configure(state="normal")
+
+    def resume_clicked(self):
+        if self.pause_event.is_set():
+            self.pause_event.clear()
+            self._append_log("INFO", "Resumed.")
+            self.btn_pause.configure(state="normal")
+            self.btn_resume.configure(state="disabled")
 
     # Collectors / Sections / Profiles
     def _csv_to_list(self, s: str) -> List[str]:

@@ -1,6 +1,6 @@
 import pytest
 pk = pytest.importorskip("pynput.keyboard")
-from keyboard_controller import KeyboardController
+from keyboard_controller import KeyboardController, is_app_generated
 
 
 class DummyController:
@@ -38,3 +38,11 @@ def test_typewrite(monkeypatch):
         ("press", "b"),
         ("release", "b"),
     ]
+
+
+def test_marks_generated(monkeypatch):
+    kc = KeyboardController()
+    dummy = DummyController()
+    monkeypatch.setattr(kc, "_controller", dummy)
+    kc.press("a")
+    assert is_app_generated()
