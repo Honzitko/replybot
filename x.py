@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+
 r"""
 X Scheduler (Manual/Compliant Edition)
 --------------------------------------
@@ -857,6 +858,7 @@ class App(tk.Tk):
         self.log_text.insert("end", f"{datetime.now(CET).strftime('%Y-%m-%d %H:%M:%S')} [{level}] {msg}\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+main
 
     def _drain_logs(self):
         try:
@@ -870,7 +872,9 @@ class App(tk.Tk):
             pass
         self.after(120, self._drain_logs)
 
+
 # ---- Entrypoint
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+main
