@@ -9,7 +9,8 @@ from PyQt5.QtWidgets import QApplication
 # Set Qt to run offscreen for headless environments
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from replypro_gui import ReplyPRO
+replypro_gui = pytest.importorskip("replypro_gui")
+ReplyPRO = replypro_gui.ReplyPRO
 
 @pytest.fixture(scope="module")
 def app():

@@ -6,7 +6,9 @@ from PyQt5.QtWidgets import QApplication
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from replypro_gui import ReplyPRO, ReplyWorker
+replypro_gui = pytest.importorskip("replypro_gui")
+ReplyPRO = replypro_gui.ReplyPRO
+ReplyWorker = replypro_gui.ReplyWorker
 
 
 @pytest.fixture(scope="module")
