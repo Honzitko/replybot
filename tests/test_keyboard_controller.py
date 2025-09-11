@@ -1,5 +1,7 @@
 import pytest
-pk = pytest.importorskip("pynput.keyboard")
+pk = pytest.importorskip(
+    "pynput.keyboard", reason="requires pynput", exc_type=ImportError
+)
 from keyboard_controller import KeyboardController, is_app_generated
 
 
