@@ -1,5 +1,37 @@
 import time
-from pynput.keyboard import Controller, Key
+
+try:  # pragma: no cover - optional dependency
+    from pynput.keyboard import Controller, Key
+except Exception:  # pragma: no cover
+    Controller = None  # type: ignore[assignment]
+
+    class Key:  # type: ignore[dead-code]
+        """Fallback ``Key`` placeholder when ``pynput`` is missing."""
+        pass
+
+
+class _NoopController:
+    """Minimal stand in for :class:`pynput.keyboard.Controller`.
+
+    When ``pynput`` is not installed the public ``KeyboardController`` will
+    still be importable but its methods become no-ops.
+    """
+
+    def press(self, key):
+        pass
+
+    def release(self, key):
+        pass
+
+    def pressed(self, *keys):
+        class _DummyCtx:
+            def __enter__(self):  # pragma: no cover - simple no-op
+                pass
+
+            def __exit__(self, exc_type, exc, tb):  # pragma: no cover
+                return False
+
+        return _DummyCtx()
 
 # ``KeyboardController`` emits global keyboard events which we also monitor to
 # detect manual user input.  The module keeps a timestamp of the most recent
@@ -27,10 +59,15 @@ _ALIASES = {
 
 
 class KeyboardController:
-    """Wrapper around pynput's Controller providing simple key helpers."""
+    """Wrapper around ``pynput``'s Controller providing simple key helpers.
+
+    If ``pynput`` is not available the controller becomes a no-op so that
+    callers can still import and instantiate this class without the optional
+    dependency.
+    """
 
     def __init__(self):
-        self._controller = Controller()
+        self._controller = Controller() if Controller else _NoopController()
 
     def _to_key(self, key: str):
         key = _ALIASES.get(key, key)
