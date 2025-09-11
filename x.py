@@ -2,7 +2,7 @@
 
 This thin wrapper simply launches the :class:`ReplyPRO` GUI from
 ``replypro_gui``.  It exists so the application can be started with
-``python replybot.py`` and to match the expected program name in user
+``python x.py`` and to match the expected program name in user
 instructions.
 """
 
