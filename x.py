@@ -977,6 +977,10 @@ class App(tk.Tk):
                 self.log_text.configure(state="disabled")
         except queue.Empty:
             pass
+        finally:
+            # Schedule the next drain so log messages keep flowing
+            # through the GUI while the worker thread is running.
+            self.after(120, self._drain_logs)
 
 
 # ---- Entrypoint
