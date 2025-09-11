@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+main
 r"""
 X Scheduler (Manual/Compliant Edition)
 --------------------------------------
@@ -858,19 +859,21 @@ class App(tk.Tk):
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
+
     def _drain_logs(self):
-        while True:
-            try:
+        try:
+            while True:
                 line = self.logq.get_nowait()
-            except queue.Empty:
-                break
-            self.log_text.configure(state="normal")
-            self.log_text.insert("end", line + "\n")
-            self.log_text.see("end")
-            self.log_text.configure(state="disabled")
-        self.after(120, self._drain_logs)
+                self.log_text.configure(state="normal")
+                self.log_text.insert("end", line + "\n")
+                self.log_text.see("end")
+                self.log_text.configure(state="disabled")
+        except queue.Empty:
+            pass
+
 
 # ---- Entrypoint
 if __name__ == "__main__":
     app = App()
     app.mainloop()
+main
