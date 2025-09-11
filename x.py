@@ -38,7 +38,10 @@ from typing import List, Tuple, Optional, Dict, Set
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
 from urllib.parse import quote as url_quote
-from pynput import keyboard as pynkeyboard
+try:
+    from pynput import keyboard as pynkeyboard
+except Exception:  # pragma: no cover - optional dependency
+    pynkeyboard = None
 from keyboard_controller import KeyboardController, is_app_generated
 
 try:
@@ -452,8 +455,11 @@ class App(tk.Tk):
         self.after(120, self._drain_logs)
 
         # global keyboard listener to auto-pause on manual input
-        self._key_listener = pynkeyboard.Listener(on_press=self._on_global_key)
-        self._key_listener.start()
+        if pynkeyboard is not None:  # pragma: no cover - optional dependency
+            self._key_listener = pynkeyboard.Listener(on_press=self._on_global_key)
+            self._key_listener.start()
+        else:
+            self._key_listener = None
 
     # UI scaffolding
     def _build_ui(self):
