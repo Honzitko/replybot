@@ -33,13 +33,21 @@ def test_typewrite(monkeypatch):
     kc = KeyboardController()
     dummy = DummyController()
     monkeypatch.setattr(kc, "_controller", dummy)
-    kc.typewrite("ab")
+    kc.typewrite("ab", interval=0)
     assert dummy.events == [
         ("press", "a"),
         ("release", "a"),
         ("press", "b"),
         ("release", "b"),
     ]
+
+
+def test_typewrite_miss_chance(monkeypatch):
+    kc = KeyboardController()
+    dummy = DummyController()
+    monkeypatch.setattr(kc, "_controller", dummy)
+    kc.typewrite("abc", interval=0, miss_chance=1.0)
+    assert dummy.events == []
 
 
 def test_marks_generated(monkeypatch):
