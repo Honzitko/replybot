@@ -48,3 +48,16 @@ def test_marks_generated(monkeypatch):
     monkeypatch.setattr(kc, "_controller", dummy)
     kc.press("a")
     assert is_app_generated()
+
+
+def test_case_insensitive(monkeypatch):
+    kc = KeyboardController()
+    dummy = DummyController()
+    monkeypatch.setattr(kc, "_controller", dummy)
+    kc.hotkey("CTRL", "ENTER")
+    assert dummy.events == [
+        ("press", pk.Key.ctrl),
+        ("press", pk.Key.enter),
+        ("release", pk.Key.enter),
+        ("release", pk.Key.ctrl),
+    ]

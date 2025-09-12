@@ -70,8 +70,18 @@ class KeyboardController:
         self._controller = Controller() if Controller else _NoopController()
 
     def _to_key(self, key: str):
-        key = _ALIASES.get(key, key)
-        return getattr(Key, key, key)
+        """Map ``key`` name to ``pynput``'s ``Key`` or return raw value.
+
+        ``pynput`` exposes its special keys in lowercase (e.g. ``Key.enter``),
+        but callers may supply names in any case.  Normalise the incoming name
+        to lowercase before resolving aliases and looking up the ``Key``
+        attribute so that ``"CTRL"``, ``"Ctrl"`` and ``"ctrl"`` all refer to
+        the same key.
+        """
+
+        key_norm = key.lower()
+        key_norm = _ALIASES.get(key_norm, key_norm)
+        return getattr(Key, key_norm, key_norm)
 
     def press(self, key: str, delay: float = 0.0) -> None:
         """Press and release ``key``.
