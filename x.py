@@ -366,11 +366,13 @@ class SchedulerWorker(threading.Thread):
             self._log("ERROR", f"Clipboard copy failed: {e}")
 
     def _send_reply(self, text: str):
-        self._push_to_clipboard(text)
+        """Simulate typing ``text`` and submit the reply."""
+
+        # Instead of pasting from the clipboard we type the reply character by
+        # character so the interaction looks more natural on screen.
+        self.kb.typewrite(text)
         time.sleep(0.1)
         key = "cmd" if sys.platform == "darwin" else "ctrl"
-        self.kb.hotkey(key, "v")
-        time.sleep(0.1)
         # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
         self.kb.hotkey(key, "enter")
 
