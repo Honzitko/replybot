@@ -1,4 +1,5 @@
 import time
+import random
 
 try:  # pragma: no cover - optional dependency
     from pynput.keyboard import Controller, Key
@@ -123,8 +124,29 @@ class KeyboardController:
                 _mark_generated()
                 self._controller.release(k)
 
-    def typewrite(self, text: str, interval: float = 0.0) -> None:
+    def typewrite(
+        self,
+        text: str,
+        interval: float = 0.05,
+        miss_chance: float = 0.0,
+    ) -> None:
+        """Type ``text`` character by character.
+
+        Parameters
+        ----------
+        text:
+            Text to type.
+        interval:
+            Delay between key presses.  Defaults to ``0.05`` seconds which
+            produces slightly slower, more human-like typing.
+        miss_chance:
+            Probability in the range ``[0.0, 1.0]`` that an individual
+            character is skipped entirely to simulate a missed keystroke.
+        """
+
         for ch in text:
+            if miss_chance and random.random() < miss_chance:
+                continue
             self.press(ch)
             if interval:
                 time.sleep(interval)
