@@ -82,15 +82,30 @@ def similarity_ratio(a: str, b: str) -> float:
 BASE_WAIT = 3
 MAX_WAIT = 15
 
+
 def ensure_connection(url: str, timeout: float) -> float:
-    if requests is None:
-        raise RuntimeError("requests library is required for ensure_connection")
+    """Check connectivity to ``url`` and return the request time.
+
+    The original implementation required the optional ``requests`` dependency
+    and raised ``RuntimeError`` when it was missing.  In environments where
+    ``requests`` is unavailable the browser was never opened which confused
+    users.  Instead of failing outright we now log a warning and skip the
+    connectivity check, returning ``0.0`` to indicate that no timing
+    information is available.
+    """
+
+    if requests is None:  # pragma: no cover - exercised when optional dep missing
+        logging.warning(
+            "requests library is not available; skipping connection check"
+        )
+        return 0.0
+
     start = time.time()
     try:
         resp = requests.get(url, timeout=timeout, stream=True)
         resp.raise_for_status()
         return time.time() - start
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - network errors are environment-specific
         logging.error(f"Connection check failed for {url}: {e}")
         raise
 
