@@ -185,6 +185,7 @@ class SchedulerWorker(threading.Thread):
         # tracking to avoid opening many tabs
         self._opened_sections: Set[str] = set()
         self._opened_this_step: bool = False
+        self._browser_opened = False
 
     def _log(self, level, msg):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
@@ -305,9 +306,6 @@ class SchedulerWorker(threading.Thread):
         self._opened_this_step = False
 
     def _open_search(self, query: str, section_name: str):
-        if not self._should_open_search_now(section_name):
-            self._log("INFO", f"Search tab already open for policy '{self.search_open_policy}'. Reusing existing tab.")
-            return
         url = build_search_url(query, self.search_mode)
         try:
             elapsed = ensure_connection(url, timeout=5)
@@ -317,8 +315,16 @@ class SchedulerWorker(threading.Thread):
             return
         self._log("INFO", f"Open search: {url}")
         try:
-            import webbrowser
-            webbrowser.open(url, new=0, autoraise=True)
+            if not self._browser_opened:
+                import webbrowser
+                webbrowser.open(url, new=0, autoraise=True)
+                self._browser_opened = True
+            else:
+                key = "cmd" if sys.platform == "darwin" else "ctrl"
+                self.kb.hotkey(key, "l")
+                time.sleep(0.1)
+                self.kb.typewrite(url)
+                self.kb.press("enter")
         except Exception as e:
             self._log("ERROR", f"Browser navigation failed: {e}")
             return
@@ -333,7 +339,6 @@ class SchedulerWorker(threading.Thread):
             self._log("WARN", f"Page load wait exceeded {MAX_WAIT}s; consider retry.")
         else:
             self._log("INFO", f"Page ready after {waited:.2f}s")
-        self._mark_opened(section_name)
 
     def _push_to_clipboard(self, text: str):
         if not pyperclip:
@@ -353,6 +358,15 @@ class SchedulerWorker(threading.Thread):
         time.sleep(0.1)
         # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
         self.kb.hotkey(key, "enter")
+
+    def _interact_and_reply(self, text: str):
+        presses = random.randint(2, 5)
+        for _ in range(presses):
+            self.kb.press("j", delay=0.1)
+        self.kb.press("l", delay=0.1)
+        self.kb.press("n", delay=0.1)
+        time.sleep(0.5)
+        self._send_reply(text)
 
     def run(self):
         self._log("INFO", f"Session start {self.session_start} | ends by {self.session_end}")
@@ -382,24 +396,26 @@ class SchedulerWorker(threading.Thread):
                 processed = 0
 
                 for section in sections:
-                    if self.stop_event.is_set() or datetime.now(CET) >= step_deadline: break
+                    if (self.stop_event.is_set() or
+                            datetime.now(CET) >= step_deadline or
+                            processed >= targets_goal):
+                        break
                     self._wait_if_paused()
                     max_responses = max(1, section.pick_max_responses())
                     self._log("INFO", f"Section → {section.name} (limit {max_responses})")
 
-                    query = section.pick_query() or "general discovery"
-                    self._open_search(query, section.name)
-
-                    # Manual targets (conceptual pacing)
-                    targets = [f"manual_target_{i}" for i in range(random.randint(3,6))]
-
-                    for _t in targets:
-                        if self.stop_event.is_set() or datetime.now(CET) >= step_deadline: break
-                        if processed >= targets_goal: break
-                        if not self._caps_remaining(): break
+                    while max_responses > 0:
+                        if (self.stop_event.is_set() or
+                                datetime.now(CET) >= step_deadline or
+                                processed >= targets_goal or
+                                not self._caps_remaining()):
+                            break
 
                         self._wait_if_paused()
                         self._micro_pause_if_due()
+
+                        query = section.pick_query() or "general discovery"
+                        self._open_search(query, section.name)
 
                         reply_text = section.pick_response() or "Starting strong and staying consistent."
                         if not self._allowed_for_text(reply_text):
@@ -409,7 +425,7 @@ class SchedulerWorker(threading.Thread):
                             reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
 
                         self._log("INFO", f"Replying → {reply_text!r}")
-                        self._send_reply(reply_text)
+                        self._interact_and_reply(reply_text)
                         self._cooldown()
 
                         self._record_reply(reply_text)

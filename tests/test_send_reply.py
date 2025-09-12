@@ -18,7 +18,7 @@ class DummyKB:
         self.calls = []
     def hotkey(self, *keys):
         self.calls.append(("hotkey", keys))
-    def press(self, key):
+    def press(self, key, delay=0):
         self.calls.append(("press", key))
 
 def _make_worker(kb):
@@ -48,4 +48,22 @@ def test_send_reply_macos(monkeypatch):
     assert dummy.calls == [
         ("hotkey", ("cmd", "v")),
         ("hotkey", ("cmd", "enter")),
+    ]
+
+
+def test_interact_and_reply(monkeypatch):
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+    monkeypatch.setattr(xsys, "platform", "linux")
+    monkeypatch.setattr(xtime, "sleep", lambda s: None)
+    monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
+    SchedulerWorker._interact_and_reply(worker, "hi")
+    assert dummy.calls == [
+        ("press", "j"),
+        ("press", "j"),
+        ("press", "j"),
+        ("press", "l"),
+        ("press", "n"),
+        ("hotkey", ("ctrl", "v")),
+        ("hotkey", ("ctrl", "enter")),
     ]
