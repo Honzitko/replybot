@@ -31,6 +31,7 @@ import queue
 import random
 import threading
 import logging
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from typing import List, Tuple, Optional, Dict, Set
@@ -347,9 +348,11 @@ class SchedulerWorker(threading.Thread):
     def _send_reply(self, text: str):
         self._push_to_clipboard(text)
         time.sleep(0.1)
-        self.kb.hotkey("ctrl", "v")
+        key = "cmd" if sys.platform == "darwin" else "ctrl"
+        self.kb.hotkey(key, "v")
         time.sleep(0.1)
-        self.kb.press("enter")
+        # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
+        self.kb.hotkey(key, "enter")
 
     def run(self):
         self._log("INFO", f"Session start {self.session_start} | ends by {self.session_end}")
