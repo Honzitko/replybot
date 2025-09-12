@@ -368,9 +368,12 @@ class SchedulerWorker(threading.Thread):
     def _send_reply(self, text: str):
         """Simulate typing ``text`` and submit the reply."""
 
-        # Instead of pasting from the clipboard we type the reply character by
-        # character so the interaction looks more natural on screen.
-        self.kb.typewrite(text)
+        # Type the reply one character at a time to imitate natural typing.
+        for ch in text:
+            self.kb.press(ch)
+            time.sleep(0.05)
+
+        # Small pause before sending the reply.
         time.sleep(0.1)
         key = "cmd" if sys.platform == "darwin" else "ctrl"
         # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
