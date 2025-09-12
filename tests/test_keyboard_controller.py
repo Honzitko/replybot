@@ -1,4 +1,6 @@
 import pytest
+import time
+import random
 pk = pytest.importorskip(
     "pynput.keyboard", reason="requires pynput", exc_type=ImportError
 )
@@ -33,13 +35,32 @@ def test_typewrite(monkeypatch):
     kc = KeyboardController()
     dummy = DummyController()
     monkeypatch.setattr(kc, "_controller", dummy)
-    kc.typewrite("ab")
+    kc.typewrite("ab", interval=0)
     assert dummy.events == [
         ("press", "a"),
         ("release", "a"),
         ("press", "b"),
         ("release", "b"),
     ]
+
+
+def test_typewrite_miss_chance(monkeypatch):
+    kc = KeyboardController()
+    dummy = DummyController()
+    monkeypatch.setattr(kc, "_controller", dummy)
+    kc.typewrite("abc", interval=0, miss_chance=1.0)
+    assert dummy.events == []
+
+
+def test_typewrite_jitter(monkeypatch):
+    kc = KeyboardController()
+    dummy = DummyController()
+    monkeypatch.setattr(kc, "_controller", dummy)
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(random, "uniform", lambda a, b: b)
+    kc.typewrite("ab", interval=0.2, jitter=0.1)
+    assert sleeps == [0.3, 0.3]
 
 
 def test_marks_generated(monkeypatch):
