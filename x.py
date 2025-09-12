@@ -316,10 +316,8 @@ class SchedulerWorker(threading.Thread):
             return
         self._log("INFO", f"Open search: {url}")
         try:
-            self.kb.hotkey("ctrl", "l")  # focus address bar
-            time.sleep(0.1)
-            self.kb.typewrite(url)
-            self.kb.press("enter")
+            import webbrowser
+            webbrowser.open(url, new=0, autoraise=True)
         except Exception as e:
             self._log("ERROR", f"Browser navigation failed: {e}")
             return
@@ -460,6 +458,35 @@ class App(tk.Tk):
             self._key_listener.start()
         else:
             self._key_listener = None
+
+    class _Countdown(tk.Toplevel):
+        def __init__(self, master, seconds, on_done, on_cancel):
+            super().__init__(master)
+            self.title("Starting soon…")
+            self.resizable(False, False)
+            self.remaining = seconds
+            self.on_done = on_done
+            self.on_cancel = on_cancel
+            self.label = ttk.Label(self, text="", font=("TkDefaultFont", 24))
+            self.label.pack(padx=20, pady=20)
+            btn = ttk.Button(self, text="Cancel", command=self.cancel)
+            btn.pack(pady=(0, 20))
+            self.protocol("WM_DELETE_WINDOW", self.cancel)
+            self._tick()
+
+        def _tick(self):
+            if self.remaining <= 0:
+                self.destroy()
+                self.on_done()
+            else:
+                self.label.config(text=str(self.remaining))
+                self.remaining -= 1
+                self.after(1000, self._tick)
+
+        def cancel(self):
+            self.destroy()
+            if self.on_cancel:
+                self.on_cancel()
 
     # UI scaffolding
     def _build_ui(self):
@@ -716,15 +743,22 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Invalid input", str(e)); return
 
-        self._append_log("INFO", "Starting…")
-        self.stop_event.clear()
-        self.pause_event.clear()
-        self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event, self.pause_event, self.kb)
-        self.worker.start()
         self.btn_start.configure(state="disabled")
-        self.btn_pause.configure(state="normal")
-        self.btn_resume.configure(state="disabled")
-        self.btn_stop.configure(state="normal")
+
+        def on_cancel():
+            self.btn_start.configure(state="normal")
+
+        def begin():
+            self._append_log("INFO", "Starting…")
+            self.stop_event.clear()
+            self.pause_event.clear()
+            self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event, self.pause_event, self.kb)
+            self.worker.start()
+            self.btn_pause.configure(state="normal")
+            self.btn_resume.configure(state="disabled")
+            self.btn_stop.configure(state="normal")
+
+        self._Countdown(self, 10, begin, on_cancel)
 
     def stop_clicked(self):
         if self.worker and self.worker.is_alive():
