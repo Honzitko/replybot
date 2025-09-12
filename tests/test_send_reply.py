@@ -20,6 +20,8 @@ class DummyKB:
         self.calls.append(("hotkey", keys))
     def press(self, key, delay=0):
         self.calls.append(("press", key))
+    def typewrite(self, text):
+        self.calls.append(("typewrite", text))
 
 def _make_worker(kb):
     worker = object.__new__(SchedulerWorker)
@@ -35,7 +37,7 @@ def test_send_reply_linux(monkeypatch):
     monkeypatch.setattr(xtime, "sleep", lambda s: None)
     SchedulerWorker._send_reply(worker, "hi")
     assert dummy.calls == [
-        ("hotkey", ("ctrl", "v")),
+        ("typewrite", "hi"),
         ("hotkey", ("ctrl", "enter")),
     ]
 
@@ -46,7 +48,7 @@ def test_send_reply_macos(monkeypatch):
     monkeypatch.setattr(xtime, "sleep", lambda s: None)
     SchedulerWorker._send_reply(worker, "hi")
     assert dummy.calls == [
-        ("hotkey", ("cmd", "v")),
+        ("typewrite", "hi"),
         ("hotkey", ("cmd", "enter")),
     ]
 
@@ -64,6 +66,6 @@ def test_interact_and_reply(monkeypatch):
         ("press", "j"),
         ("press", "l"),
         ("press", "n"),
-        ("hotkey", ("ctrl", "v")),
+        ("typewrite", "hi"),
         ("hotkey", ("ctrl", "enter")),
     ]
