@@ -1,3 +1,4 @@
+
 import importlib.util
 import pathlib
 import sys
@@ -6,7 +7,9 @@ from datetime import datetime, timedelta
 root = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 
+
 from post_scheduler import PostScheduler
+
 
 
 def _dt(hour, minute=0):
@@ -31,3 +34,4 @@ def test_schedule_during_sleep_delays_until_end():
     now = datetime(2024, 1, 1, 23, 30)
     next_time = sched.schedule_next(now, timedelta(hours=1))
     assert next_time == end + timedelta(hours=1)
+
