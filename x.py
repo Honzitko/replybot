@@ -34,7 +34,7 @@ import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
-from typing import List, Tuple, Optional, Dict, Set
+from typing import List, Tuple, Optional, Dict, Set, Callable
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
@@ -157,6 +157,51 @@ DEFAULT_SECTIONS_SEED = [
     ("Creator/Brand Voice",(220,240),(5,10),["brand mentions","community threads"],
      ["Let’s turn ideas into outcomes.","Consistency is the advantage.","Show up, level up."]),
 ]
+
+# ---- Post scheduling
+
+
+class PostScheduler:
+    """Very small in-memory FIFO scheduler for composed posts.
+
+    The real application may later expand this to persist posts or schedule
+    them for a specific time.  For the purposes of the tests it simply keeps a
+    list of posts that have been saved through the :class:`PostEditor` dialog.
+    """
+
+    def __init__(self) -> None:
+        self.posts: List[str] = []
+
+    def push(self, text: str) -> None:
+        """Store ``text`` for later processing if it is not empty."""
+
+        if text:
+            self.posts.append(text)
+
+
+class PostEditor(tk.Toplevel):
+    """Simple dialog allowing the user to compose and save a post."""
+
+    def __init__(self, master: tk.Misc, scheduler: PostScheduler):
+        super().__init__(master)
+        self.title("New post")
+        self.scheduler = scheduler
+        self.resizable(True, True)
+
+        self.txt = scrolledtext.ScrolledText(self, width=60, height=10)
+        self.txt.pack(fill="both", expand=True, padx=10, pady=10)
+
+        btn = ttk.Button(self, text="Save", command=self._save)
+        btn.pack(pady=(0, 10))
+
+        # Allow closing via window manager controls
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+
+    def _save(self) -> None:
+        content = self.txt.get("1.0", "end").strip()
+        if content:
+            self.scheduler.push(content)
+        self.destroy()
 
 # ---- Worker (manual flow, no key simulation)
 class SchedulerWorker(threading.Thread):
@@ -524,6 +569,10 @@ class App(tk.Tk):
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
 
+        # post scheduling and profile key bindings
+        self.post_scheduler = PostScheduler()
+        self.profile_key_bindings: Dict[str, Callable] = {}
+
         self._build_ui()
         self._init_default_profile()
         self.after(120, self._drain_logs)
@@ -643,6 +692,10 @@ class App(tk.Tk):
 
         ttk.Label(row3, text="Popular → typed_query; Latest → &f=live. Open policy controls how often a tab is opened.").grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(6,2))
 
+        # Key binding: allow composing a new post via "N"
+        root.bind("N", self._open_post_editor)
+        self.profile_key_bindings["N"] = lambda: self._open_post_editor()
+
     def _on_global_key(self, key):
         if is_app_generated():
             return
@@ -650,6 +703,11 @@ class App(tk.Tk):
             self.pause_event.set()
             self._append_log("INFO", "Paused due to user input.")
             self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
+
+    def _open_post_editor(self, event=None):
+        """Open the :class:`PostEditor` dialog and let the user compose a post."""
+
+        PostEditor(self, self.post_scheduler)
 
     def _build_session_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
