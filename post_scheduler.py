@@ -1,3 +1,4 @@
+
 """Simple post scheduler with RSS import stub.
 
 This module defines :func:`generate_post_from_rss` which provides an
@@ -117,3 +118,4 @@ if __name__ == "__main__":  # pragma: no cover - manual demonstration helper
     root.withdraw()  # Hide root window
     win = PostWindow(root, settings={})
     win.mainloop()
+
