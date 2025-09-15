@@ -44,6 +44,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     pynkeyboard = None
 from keyboard_controller import KeyboardController, is_app_generated
+from post_library import PostLibrary
 
 try:
     import requests
@@ -478,6 +479,8 @@ class App(tk.Tk):
         self.config_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "configs")
         os.makedirs(self.config_dir, exist_ok=True)
 
+        self.post_library = PostLibrary(os.path.join(self.config_dir, "posts.json"))
+
         self.logq: queue.Queue[str] = queue.Queue()
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
@@ -536,6 +539,7 @@ class App(tk.Tk):
         self.tab_behavior = ttk.Frame(self.nb)
         self.tab_guardrails = ttk.Frame(self.nb)
         self.tab_sections = ttk.Frame(self.nb)
+        self.tab_posts = ttk.Frame(self.nb)
         self.tab_review = ttk.Frame(self.nb)
         self.tab_log = ttk.Frame(self.nb)
 
@@ -544,6 +548,7 @@ class App(tk.Tk):
         self.nb.add(self.tab_behavior, text="Humanization & Behavior")
         self.nb.add(self.tab_guardrails, text="Guardrails")
         self.nb.add(self.tab_sections, text="Sections (Queries/Responses)")
+        self.nb.add(self.tab_posts, text="Posts")
         self.nb.add(self.tab_review, text="Review & Transparency")
         self.nb.add(self.tab_log, text="Logs")
 
@@ -552,6 +557,7 @@ class App(tk.Tk):
         self._build_behavior_tab(self.tab_behavior)
         self._build_guardrails_tab(self.tab_guardrails)
         self._build_sections_tab(self.tab_sections)
+        self._build_posts_tab(self.tab_posts)
         self._build_review_tab(self.tab_review)
         self._build_log_tab(self.tab_log)
 
@@ -724,6 +730,58 @@ class App(tk.Tk):
                 "txt_queries": txt_q, "txt_responses": txt_r
             })
         self._bind_dirty(nb)
+
+    def _build_posts_tab(self, root):
+        f = ttk.Frame(root)
+        f.pack(fill="both", expand=True, padx=10, pady=10)
+
+        list_frame = ttk.Frame(f)
+        list_frame.pack(side="left", fill="both", expand=True)
+
+        self.posts_list = tk.Listbox(list_frame)
+        self.posts_list.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(list_frame, command=self.posts_list.yview)
+        scroll.pack(side="left", fill="y")
+        self.posts_list.configure(yscrollcommand=scroll.set)
+
+        btns = ttk.Frame(f)
+        btns.pack(side="left", fill="y", padx=(10, 0))
+        ttk.Button(btns, text="Add", command=self._add_post).pack(fill="x")
+        ttk.Button(btns, text="Edit", command=self._edit_post).pack(fill="x", pady=4)
+        ttk.Button(btns, text="Delete", command=self._delete_post).pack(fill="x")
+
+        self._refresh_posts()
+
+    def _refresh_posts(self):
+        self.posts_list.delete(0, tk.END)
+        for post in self.post_library.get_posts():
+            self.posts_list.insert(tk.END, post)
+
+    def _add_post(self):
+        text = simpledialog.askstring("Add Post", "Post text:", parent=self)
+        if text:
+            self.post_library.add_post(text)
+            self._refresh_posts()
+
+    def _edit_post(self):
+        sel = self.posts_list.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        current = self.post_library.get_posts()[idx]
+        text = simpledialog.askstring("Edit Post", "Post text:", initialvalue=current, parent=self)
+        if text is not None:
+            self.post_library.update_post(idx, text)
+            self._refresh_posts()
+
+    def _delete_post(self):
+        sel = self.posts_list.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if messagebox.askyesno("Delete Post", "Are you sure?"):
+            self.post_library.delete_post(idx)
+            self._refresh_posts()
 
     def _build_review_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
