@@ -1,43 +1,37 @@
-import time
-from datetime import datetime, timedelta
+
+import importlib.util
 import pathlib
 import sys
+from datetime import datetime, timedelta
 
-# Allow importing modules from the repository root when the tests are executed
-# from within the ``tests`` directory.
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+root = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root))
+
 
 from post_scheduler import PostScheduler
 
 
-def test_posts_dispatched_in_order_and_interval():
-    scheduler = PostScheduler(interval=0.01)
-    results: list[str] = []
-    timestamps: list[float] = []
-    scheduler.on_post_ready = lambda post: (results.append(post), timestamps.append(time.time()))
-    scheduler.start()
-    scheduler.enqueue(["a", "b"])
-    time.sleep(0.05)
-    scheduler.stop()
-    assert results == ["a", "b"]
-    assert timestamps[1] - timestamps[0] >= 0.009
+
+def _dt(hour, minute=0):
+    return datetime(2024, 1, 1, hour, minute)
 
 
-def test_sleep_window_pause_and_resume():
-    now = datetime.now()
-    sleep_start = (now - timedelta(seconds=0.01)).time()
-    sleep_end = (now + timedelta(seconds=0.05)).time()
-    scheduler = PostScheduler(interval=0.01, sleep_window=(sleep_start, sleep_end))
-    events: list[str] = []
-    results: list[str] = []
-    scheduler.on_pause = lambda: events.append("pause")
-    scheduler.on_resume = lambda: events.append("resume")
-    scheduler.on_post_ready = lambda post: results.append(post)
-    scheduler.start()
-    scheduler.enqueue(["p1"])
-    time.sleep(0.02)
-    assert events == ["pause"]
-    time.sleep(0.1)
-    scheduler.stop()
-    assert events == ["pause", "resume"]
-    assert results == ["p1"]
+def test_schedule_outside_sleep():
+    start = _dt(22)
+    end = datetime(2024, 1, 2, 6, 0)
+    sched = PostScheduler(start, end)
+    now = _dt(12)
+    next_time = sched.schedule_next(now, timedelta(hours=1))
+    assert sched.night_sleep_start == start
+    assert sched.night_sleep_end == end
+    assert next_time == now + timedelta(hours=1)
+
+
+def test_schedule_during_sleep_delays_until_end():
+    start = _dt(22)
+    end = datetime(2024, 1, 2, 6, 0)
+    sched = PostScheduler(start, end)
+    now = datetime(2024, 1, 1, 23, 30)
+    next_time = sched.schedule_next(now, timedelta(hours=1))
+    assert next_time == end + timedelta(hours=1)
+
