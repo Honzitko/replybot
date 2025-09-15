@@ -1,3 +1,4 @@
+
 import importlib.util
 import pathlib
 import sys
@@ -31,3 +32,4 @@ def test_post_scheduler_handles_cancel():
     ps = PostScheduler(1, pause, stop, cb)
     ps._trigger_post()
     assert not pause.is_set()
+
