@@ -127,9 +127,11 @@ class KeyboardController:
     def typewrite(
         self,
         text: str,
+
         interval: float = 0.2,
         miss_chance: float = 0.0,
         jitter: float = 0.1,
+
     ) -> None:
         """Type ``text`` character by character.
 
@@ -138,6 +140,7 @@ class KeyboardController:
         text:
             Text to type.
         interval:
+
             Base delay between key presses.  Defaults to ``0.2`` seconds for
             a noticeably slow typing speed.
         miss_chance:
@@ -148,6 +151,7 @@ class KeyboardController:
             adjusted by ``random.uniform(-jitter, jitter)`` so successive
             keystrokes are unevenly spaced.  Ignored if ``interval`` is ``0``.
         """
+
         for ch in text:
             if miss_chance and random.random() < miss_chance:
                 continue

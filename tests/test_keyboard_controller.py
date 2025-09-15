@@ -52,6 +52,7 @@ def test_typewrite_miss_chance(monkeypatch):
     assert dummy.events == []
 
 
+
 def test_typewrite_jitter(monkeypatch):
     kc = KeyboardController()
     dummy = DummyController()
@@ -61,6 +62,7 @@ def test_typewrite_jitter(monkeypatch):
     monkeypatch.setattr(random, "uniform", lambda a, b: b)
     kc.typewrite("ab", interval=0.2, jitter=0.1)
     assert sleeps == [0.3, 0.3]
+
 
 
 def test_marks_generated(monkeypatch):
