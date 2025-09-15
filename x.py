@@ -465,9 +465,42 @@ class SchedulerWorker(threading.Thread):
         except KeyboardInterrupt:
             self._log("WARN", "Interrupted by user.")
         except Exception as e:
-            self._log("ERROR", f"Fatal: {e}")
+                        self._log("ERROR", f"Fatal: {e}")
 
 # ---- GUI
+
+class PostScheduler(threading.Thread):
+    """Simple scheduler that pauses the reply flow before triggering a post."""
+
+    def __init__(
+        self,
+        interval_minutes: int,
+        pause_event: threading.Event,
+        stop_event: threading.Event,
+        post_callback,
+    ):
+        super().__init__(daemon=True)
+        self.interval_minutes = interval_minutes
+        self.pause_event = pause_event
+        self.stop_event = stop_event
+        self.post_callback = post_callback
+
+    def run(self):
+        while not self.stop_event.is_set():
+            time.sleep(self.interval_minutes * 60)
+            if self.stop_event.is_set():
+                break
+            self._trigger_post()
+
+    def _trigger_post(self):
+        self.pause_event.set()
+        try:
+            if self.post_callback:
+                self.post_callback()
+        except Exception:
+            pass
+        finally:
+            self.pause_event.clear()
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -483,6 +516,7 @@ class App(tk.Tk):
         self.pause_event = threading.Event()
         self.kb = KeyboardController()
         self.worker: Optional[SchedulerWorker] = None
+        self.post_scheduler: Optional["PostScheduler"] = None
 
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
@@ -624,6 +658,9 @@ class App(tk.Tk):
         self.var_break_min = tk.IntVar(value=2)
         self.var_break_max = tk.IntVar(value=4)
         self._pair(f, "Session break minutes (min/max)", self.var_break_min, self.var_break_max)
+
+        self.var_post_interval = tk.IntVar(value=0)
+        self._single(f, "Post interval minutes", self.var_post_interval)
 
         self.var_sleep_start_h_min = tk.IntVar(value=22)
         self.var_sleep_start_h_max = tk.IntVar(value=24)
@@ -793,6 +830,12 @@ class App(tk.Tk):
             self.pause_event.clear()
             self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event, self.pause_event, self.kb)
             self.worker.start()
+            interval = int(cfg.get("post_interval_minutes", 0))
+            if interval > 0:
+                self.post_scheduler = PostScheduler(interval, self.pause_event, self.stop_event, lambda: None)
+                self.post_scheduler.start()
+            else:
+                self.post_scheduler = None
             self.btn_pause.configure(state="normal")
             self.btn_resume.configure(state="disabled")
             self.btn_stop.configure(state="normal")
@@ -807,6 +850,7 @@ class App(tk.Tk):
         self.btn_start.configure(state="normal")
         self.btn_pause.configure(state="disabled")
         self.btn_resume.configure(state="disabled")
+        self.post_scheduler = None
 
     def pause_clicked(self):
         if not self.pause_event.is_set():
@@ -840,6 +884,7 @@ class App(tk.Tk):
             "session_hours_range": (float(self.var_session_hours_min.get()), float(self.var_session_hours_max.get())),
             "session_step_minutes_range": (int(self.var_step_min.get()), int(self.var_step_max.get())),
             "session_break_minutes_range": (int(self.var_break_min.get()), int(self.var_break_max.get())),
+            "post_interval_minutes": int(self.var_post_interval.get()),
             "night_sleep_start_hour_range": (int(self.var_sleep_start_h_min.get()), int(self.var_sleep_start_h_max.get())),
             "night_sleep_start_minute_jitter": (int(self.var_sleep_start_jitter_min.get()), int(self.var_sleep_start_jitter_max.get())),
             "night_sleep_hours_range": (float(self.var_sleep_hours_min.get()), float(self.var_sleep_hours_max.get())),
@@ -908,6 +953,7 @@ class App(tk.Tk):
         set_pair(self.var_session_hours_min, self.var_session_hours_max, cfg.get("session_hours_range"), (12.0,14.0))
         set_pair(self.var_step_min, self.var_step_max, cfg.get("session_step_minutes_range"), (12,16))
         set_pair(self.var_break_min, self.var_break_max, cfg.get("session_break_minutes_range"), (2,4))
+        self.var_post_interval.set(int(cfg.get("post_interval_minutes", 0)))
         set_pair(self.var_sleep_start_h_min, self.var_sleep_start_h_max, cfg.get("night_sleep_start_hour_range"), (22,24))
         set_pair(self.var_sleep_start_jitter_min, self.var_sleep_start_jitter_max, cfg.get("night_sleep_start_minute_jitter"), (0,30))
         set_pair(self.var_sleep_hours_min, self.var_sleep_hours_max, cfg.get("night_sleep_hours_range"), (7.0,8.0))

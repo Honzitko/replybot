@@ -2,36 +2,34 @@
 import importlib.util
 import pathlib
 import sys
-from datetime import datetime, timedelta
+import threading
 
 root = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
+spec = importlib.util.spec_from_file_location("x", root / "x.py")
+x = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = x
+spec.loader.exec_module(x)
 
+PostScheduler = x.PostScheduler
 
-from post_scheduler import PostScheduler
+def test_post_scheduler_pauses_and_resumes():
+    pause = threading.Event()
+    stop = threading.Event()
+    calls = []
+    def cb():
+        calls.append(pause.is_set())
+    ps = PostScheduler(1, pause, stop, cb)
+    ps._trigger_post()
+    assert calls == [True]
+    assert not pause.is_set()
 
-
-
-def _dt(hour, minute=0):
-    return datetime(2024, 1, 1, hour, minute)
-
-
-def test_schedule_outside_sleep():
-    start = _dt(22)
-    end = datetime(2024, 1, 2, 6, 0)
-    sched = PostScheduler(start, end)
-    now = _dt(12)
-    next_time = sched.schedule_next(now, timedelta(hours=1))
-    assert sched.night_sleep_start == start
-    assert sched.night_sleep_end == end
-    assert next_time == now + timedelta(hours=1)
-
-
-def test_schedule_during_sleep_delays_until_end():
-    start = _dt(22)
-    end = datetime(2024, 1, 2, 6, 0)
-    sched = PostScheduler(start, end)
-    now = datetime(2024, 1, 1, 23, 30)
-    next_time = sched.schedule_next(now, timedelta(hours=1))
-    assert next_time == end + timedelta(hours=1)
+def test_post_scheduler_handles_cancel():
+    pause = threading.Event()
+    stop = threading.Event()
+    def cb():
+        raise RuntimeError("cancelled")
+    ps = PostScheduler(1, pause, stop, cb)
+    ps._trigger_post()
+    assert not pause.is_set()
 
