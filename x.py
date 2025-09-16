@@ -444,7 +444,7 @@ class SchedulerWorker(threading.Thread):
         time.sleep(random.uniform(0.2, 0.35))
         self.kb.press("l")
         time.sleep(random.uniform(0.2, 0.35))
-        self.kb.press("n")
+        self.kb.press("r")
         time.sleep(0.5)
         self._send_reply(text)
 

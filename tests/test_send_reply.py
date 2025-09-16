@@ -65,7 +65,7 @@ def test_interact_and_reply(monkeypatch):
     SchedulerWorker._interact_and_reply(worker, "hi")
     assert dummy.calls == [
         ("press", "l"),
-        ("press", "n"),
+        ("press", "r"),
         ("press", "h"),
         ("press", "i"),
         ("hotkey", ("ctrl", "enter")),
