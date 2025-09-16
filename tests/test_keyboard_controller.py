@@ -48,8 +48,28 @@ def test_typewrite_miss_chance(monkeypatch):
     kc = KeyboardController()
     dummy = DummyController()
     monkeypatch.setattr(kc, "_controller", dummy)
+    monkeypatch.setattr(random, "random", lambda: 0.0)
     kc.typewrite("abc", interval=0, miss_chance=1.0)
-    assert dummy.events == []
+    assert dummy.events == [
+        ("press", "a"),
+        ("release", "a"),
+        ("press", pk.Key.backspace),
+        ("release", pk.Key.backspace),
+        ("press", "a"),
+        ("release", "a"),
+        ("press", "b"),
+        ("release", "b"),
+        ("press", pk.Key.backspace),
+        ("release", pk.Key.backspace),
+        ("press", "b"),
+        ("release", "b"),
+        ("press", "c"),
+        ("release", "c"),
+        ("press", pk.Key.backspace),
+        ("release", pk.Key.backspace),
+        ("press", "c"),
+        ("release", "c"),
+    ]
 
 
 
