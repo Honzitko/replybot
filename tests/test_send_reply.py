@@ -91,3 +91,22 @@ def test_press_j_batch(monkeypatch):
         ("press", "j"),
         ("press", "j"),
     ]
+
+
+def test_reset_step_open_state_clears_sections_once_per_section():
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+    worker.search_open_policy = "once_per_section"
+    worker._opened_sections = set()
+    worker._opened_this_step = False
+
+    assert worker._should_open_search_now("alpha") is True
+
+    worker._mark_opened("alpha")
+    assert worker._should_open_search_now("alpha") is False
+
+    SchedulerWorker._reset_step_open_state(worker)
+
+    assert worker._opened_sections == set()
+    assert worker._opened_this_step is False
+    assert worker._should_open_search_now("alpha") is True

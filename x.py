@@ -364,7 +364,10 @@ class SchedulerWorker(threading.Thread):
             pass
 
     def _reset_step_open_state(self):
+        """Reset per-step tracking of opened search sections."""
+
         self._opened_this_step = False
+        self._opened_sections.clear()
 
     def _open_search(self, query: str, section_name: str):
         url = build_search_url(query, self.search_mode)
