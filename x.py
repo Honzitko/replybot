@@ -488,6 +488,11 @@ class SchedulerWorker(threading.Thread):
                     remaining_attempts = max_responses
                     self._log("INFO", f"Section → {section.name} (limit {max_responses})")
 
+                    current_query = section.pick_query() or "general discovery"
+                    if self._should_open_search_now(section.name):
+                        self._open_search(current_query, section.name)
+                        self._mark_opened(section.name)
+
                     while remaining_attempts > 0:
                         if (self.stop_event.is_set() or
                                 datetime.now(CET) >= step_deadline or
@@ -498,9 +503,8 @@ class SchedulerWorker(threading.Thread):
                         self._wait_if_paused()
                         self._micro_pause_if_due()
 
-                        query = section.pick_query() or "general discovery"
-                        self._open_search(query, section.name)
-                        self._press_j_batch()
+                        if not self._press_j_batch():
+                            break
 
                         reply_text = section.pick_response() or "Starting strong and staying consistent."
                         if not self._allowed_for_text(reply_text):
