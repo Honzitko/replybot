@@ -14,6 +14,8 @@ spec.loader.exec_module(x)
 SchedulerWorker = x.SchedulerWorker
 xsys = x.sys
 xtime = x.time
+STEP_PAUSE_MIN = x.STEP_PAUSE_MIN
+STEP_PAUSE_MAX = x.STEP_PAUSE_MAX
 
 class DummyKB:
     def __init__(self):
@@ -77,9 +79,11 @@ def test_press_j_batch(monkeypatch):
     worker = _make_worker(dummy)
     monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
 
-    delays = iter([0.2, 0.21, 0.22])
+    delays = iter([0.6, 1.1, 0.9])
+    calls = []
 
     def fake_uniform(a, b):
+        calls.append((a, b))
         return next(delays)
 
     monkeypatch.setattr(x.random, "uniform", fake_uniform)
@@ -91,6 +95,7 @@ def test_press_j_batch(monkeypatch):
         ("press", "j"),
         ("press", "j"),
     ]
+    assert calls == [(STEP_PAUSE_MIN, STEP_PAUSE_MAX)] * 3
 
 
 def test_reset_step_open_state_clears_sections_once_per_section():

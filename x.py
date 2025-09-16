@@ -83,6 +83,10 @@ def similarity_ratio(a: str, b: str) -> float:
 BASE_WAIT = 3
 MAX_WAIT = 15
 
+# Natural pauses inserted between high-level actions to mimic human pacing.
+STEP_PAUSE_MIN = 0.5
+STEP_PAUSE_MAX = 1.8
+
 
 def ensure_connection(url: str, timeout: float) -> float:
     """Check connectivity to ``url`` and return the request time.
@@ -423,7 +427,7 @@ class SchedulerWorker(threading.Thread):
             time.sleep(0.05)
 
         # Small pause before sending the reply.
-        time.sleep(0.1)
+        time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         key = "cmd" if sys.platform == "darwin" else "ctrl"
         # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
         self.kb.hotkey(key, "enter")
@@ -436,7 +440,7 @@ class SchedulerWorker(threading.Thread):
             if stop_event and stop_event.is_set():
                 return False
             self.kb.press("j")
-            delay = random.uniform(0.18, 0.35)
+            delay = random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX)
             if stop_event:
                 self._pauseable_sleep(delay, chunk=0.1)
             else:
@@ -444,11 +448,11 @@ class SchedulerWorker(threading.Thread):
         return True
 
     def _interact_and_reply(self, text: str):
-        time.sleep(random.uniform(0.2, 0.35))
+        time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         self.kb.press("l")
-        time.sleep(random.uniform(0.2, 0.35))
+        time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         self.kb.press("r")
-        time.sleep(0.5)
+        time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         self._send_reply(text)
 
     def run(self):
