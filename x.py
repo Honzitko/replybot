@@ -32,7 +32,6 @@ import random
 import threading
 import logging
 import sys
-import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from typing import List, Tuple, Optional, Dict, Set, Callable
@@ -248,7 +247,6 @@ class SchedulerWorker(threading.Thread):
         self._opened_sections: Set[str] = set()
         self._opened_this_step: bool = False
         self._browser_opened = False
-        self._query_navigation_enabled = True
 
     def _log(self, level, msg):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
@@ -427,71 +425,20 @@ class SchedulerWorker(threading.Thread):
         # On X/Twitter a reply is sent with Cmd/Ctrl+Enter
         self.kb.hotkey(key, "enter")
 
-    def _pause_aware_wait(self, stop_event: threading.Event, duration: float) -> None:
-        remaining = max(0.0, duration)
-        while (
-            remaining > 0
-            and not stop_event.is_set()
-            and not self.stop_event.is_set()
-        ):
-            if self.pause_event.is_set():
-                self._wait_if_paused()
-                continue
-            wait_time = min(0.1, remaining)
-            start = time.monotonic()
-            stop_event.wait(wait_time)
-            remaining -= max(0.0, time.monotonic() - start)
-
     def _press_j_batch(self, stop_event: Optional[threading.Event] = None) -> bool:
         presses = random.randint(2, 5)
         for _ in range(presses):
-            if stop_event and (stop_event.is_set() or self.stop_event.is_set()):
+            if self.stop_event.is_set():
+                return False
+            if stop_event and stop_event.is_set():
                 return False
             self.kb.press("j")
             delay = random.uniform(0.18, 0.35)
             if stop_event:
-                self._pause_aware_wait(stop_event, delay)
+                self._pauseable_sleep(delay, chunk=0.1)
             else:
                 time.sleep(delay)
         return True
-
-    def _query_navigation_loop(self, stop_event: threading.Event) -> None:
-        while not stop_event.is_set() and not self.stop_event.is_set():
-            if self.pause_event.is_set():
-                self._wait_if_paused()
-                continue
-            if not self._press_j_batch(stop_event):
-                break
-            rest = random.uniform(0.6, 1.2)
-            self._pause_aware_wait(stop_event, rest)
-
-    @contextlib.contextmanager
-    def _query_navigation(self):
-        if not getattr(self, "_query_navigation_enabled", True):
-            yield lambda: None
-            return
-
-        stop_event = threading.Event()
-        worker = threading.Thread(
-            target=self._query_navigation_loop,
-            args=(stop_event,),
-            daemon=True,
-        )
-        worker.start()
-
-        stopped = False
-
-        def stop_navigation() -> None:
-            nonlocal stopped
-            if not stopped:
-                stopped = True
-                stop_event.set()
-                worker.join(timeout=1.5)
-
-        try:
-            yield stop_navigation
-        finally:
-            stop_navigation()
 
     def _interact_and_reply(self, text: str):
         time.sleep(random.uniform(0.2, 0.35))
@@ -548,19 +495,18 @@ class SchedulerWorker(threading.Thread):
                         self._micro_pause_if_due()
 
                         query = section.pick_query() or "general discovery"
-                        with self._query_navigation() as stop_navigation:
-                            self._open_search(query, section.name)
+                        self._open_search(query, section.name)
+                        self._press_j_batch()
 
-                            reply_text = section.pick_response() or "Starting strong and staying consistent."
-                            if not self._allowed_for_text(reply_text):
-                                continue
+                        reply_text = section.pick_response() or "Starting strong and staying consistent."
+                        if not self._allowed_for_text(reply_text):
+                            continue
 
-                            if self.cfg.get("transparency_tag_enabled", False):
-                                reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
+                        if self.cfg.get("transparency_tag_enabled", False):
+                            reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
 
-                            self._log("INFO", f"Replying → {reply_text!r}")
-                            stop_navigation()
-                            self._interact_and_reply(reply_text)
+                        self._log("INFO", f"Replying → {reply_text!r}")
+                        self._interact_and_reply(reply_text)
 
                         self._cooldown()
 

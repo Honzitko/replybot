@@ -3,7 +3,6 @@ import pathlib
 import sys
 import threading
 import time
-import types
 
 root = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
@@ -30,7 +29,6 @@ def _make_worker(kb):
     worker._push_to_clipboard = lambda text: None
     worker.stop_event = threading.Event()
     worker.pause_event = threading.Event()
-    worker._query_navigation_enabled = True
     return worker
 
 
@@ -93,46 +91,3 @@ def test_press_j_batch(monkeypatch):
         ("press", "j"),
         ("press", "j"),
     ]
-
-
-def test_query_navigation_context(monkeypatch):
-    dummy = DummyKB()
-    worker = _make_worker(dummy)
-
-    batches = []
-
-    def fake_press(self, stop_event=None):
-        batches.append("batch")
-        stop_event.wait(0.01)
-        return True
-
-    def fake_wait(self, stop_event, duration):
-        stop_event.wait(0.01)
-
-    worker._press_j_batch = types.MethodType(fake_press, worker)
-    worker._pause_aware_wait = types.MethodType(fake_wait, worker)
-
-    with worker._query_navigation():
-        time.sleep(0.03)
-
-    assert batches
-
-
-def test_query_navigation_stop_callable(monkeypatch):
-    dummy = DummyKB()
-    worker = _make_worker(dummy)
-
-    events = []
-
-    def fake_loop(self, stop_event):
-        events.append("start")
-        stop_event.wait()
-        events.append("stopped")
-
-    monkeypatch.setattr(SchedulerWorker, "_query_navigation_loop", fake_loop)
-
-    with worker._query_navigation() as stop:
-        assert events == ["start"]
-        stop()
-        assert events == ["start", "stopped"]
-
