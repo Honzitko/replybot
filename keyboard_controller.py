@@ -84,6 +84,19 @@ class KeyboardController:
         key_norm = _ALIASES.get(key_norm, key_norm)
         return getattr(Key, key_norm, key_norm)
 
+    def _sleep_with_jitter(self, interval: float, jitter: float) -> None:
+        """Sleep for ``interval`` seconds applying ``jitter`` variation."""
+
+        if not interval:
+            return
+
+        delay = interval
+        if jitter:
+            delay += random.uniform(-jitter, jitter)
+            if delay < 0:
+                delay = 0
+        time.sleep(delay)
+
     def press(self, key: str, delay: float = 0.0) -> None:
         """Press and release ``key``.
 
@@ -144,22 +157,23 @@ class KeyboardController:
             Base delay between key presses.  Defaults to ``0.2`` seconds for
             a noticeably slow typing speed.
         miss_chance:
-            Probability in the range ``[0.0, 1.0]`` that an individual
-            character is skipped entirely to simulate a missed keystroke.
+            Probability in the range ``[0.0, 1.0]`` that a temporary
+            correction is performed.  When triggered the character is typed,
+            deleted using backspace and then typed again so the final output
+            still contains the original text.
         jitter:
             Additional random variation added to ``interval``.  Each delay is
             adjusted by ``random.uniform(-jitter, jitter)`` so successive
             keystrokes are unevenly spaced.  Ignored if ``interval`` is ``0``.
         """
 
+        miss_chance = max(0.0, min(1.0, miss_chance))
+
         for ch in text:
             if miss_chance and random.random() < miss_chance:
-                continue
+                self.press(ch)
+                self._sleep_with_jitter(interval, jitter)
+                self.press("backspace")
+                self._sleep_with_jitter(interval, jitter)
             self.press(ch)
-            if interval:
-                delay = interval
-                if jitter:
-                    delay += random.uniform(-jitter, jitter)
-                    if delay < 0:
-                        delay = 0
-                time.sleep(delay)
+            self._sleep_with_jitter(interval, jitter)
