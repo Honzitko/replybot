@@ -387,7 +387,7 @@ class SchedulerWorker(threading.Thread):
                 key = "cmd" if sys.platform == "darwin" else "ctrl"
                 self.kb.hotkey(key, "l")
                 time.sleep(0.1)
-                self.kb.typewrite(url)
+                self.kb.typewrite(url, interval=0, jitter=0)
                 self.kb.press("enter")
         except Exception as e:
             self._log("ERROR", f"Browser navigation failed: {e}")
