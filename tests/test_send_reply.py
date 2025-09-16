@@ -64,12 +64,8 @@ def test_interact_and_reply(monkeypatch):
     worker = _make_worker(dummy)
     monkeypatch.setattr(xsys, "platform", "linux")
     monkeypatch.setattr(xtime, "sleep", lambda s: None)
-    monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
     SchedulerWorker._interact_and_reply(worker, "hi")
     assert dummy.calls == [
-        ("press", "j"),
-        ("press", "j"),
-        ("press", "j"),
         ("press", "l"),
         ("press", "n"),
         ("press", "h"),
@@ -120,3 +116,23 @@ def test_query_navigation_context(monkeypatch):
         time.sleep(0.03)
 
     assert batches
+
+
+def test_query_navigation_stop_callable(monkeypatch):
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+
+    events = []
+
+    def fake_loop(self, stop_event):
+        events.append("start")
+        stop_event.wait()
+        events.append("stopped")
+
+    monkeypatch.setattr(SchedulerWorker, "_query_navigation_loop", fake_loop)
+
+    with worker._query_navigation() as stop:
+        assert events == ["start"]
+        stop()
+        assert events == ["start", "stopped"]
+

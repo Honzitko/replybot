@@ -468,8 +468,9 @@ class SchedulerWorker(threading.Thread):
     @contextlib.contextmanager
     def _query_navigation(self):
         if not getattr(self, "_query_navigation_enabled", True):
-            yield
+            yield lambda: None
             return
+
         stop_event = threading.Event()
         worker = threading.Thread(
             target=self._query_navigation_loop,
@@ -477,14 +478,22 @@ class SchedulerWorker(threading.Thread):
             daemon=True,
         )
         worker.start()
+
+        stopped = False
+
+        def stop_navigation() -> None:
+            nonlocal stopped
+            if not stopped:
+                stopped = True
+                stop_event.set()
+                worker.join(timeout=1.5)
+
         try:
-            yield
+            yield stop_navigation
         finally:
-            stop_event.set()
-            worker.join(timeout=1.5)
+            stop_navigation()
 
     def _interact_and_reply(self, text: str):
-        self._press_j_batch()
         time.sleep(random.uniform(0.2, 0.35))
         self.kb.press("l")
         time.sleep(random.uniform(0.2, 0.35))
@@ -539,7 +548,7 @@ class SchedulerWorker(threading.Thread):
                         self._micro_pause_if_due()
 
                         query = section.pick_query() or "general discovery"
-                        with self._query_navigation():
+                        with self._query_navigation() as stop_navigation:
                             self._open_search(query, section.name)
 
                             reply_text = section.pick_response() or "Starting strong and staying consistent."
@@ -550,6 +559,7 @@ class SchedulerWorker(threading.Thread):
                                 reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
 
                             self._log("INFO", f"Replying → {reply_text!r}")
+                            stop_navigation()
                             self._interact_and_reply(reply_text)
 
                         self._cooldown()
