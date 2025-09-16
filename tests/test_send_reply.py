@@ -16,6 +16,7 @@ xsys = x.sys
 xtime = x.time
 STEP_PAUSE_MIN = x.STEP_PAUSE_MIN
 STEP_PAUSE_MAX = x.STEP_PAUSE_MAX
+FAST_J_INITIAL_DELAY_RANGE = x.FAST_J_INITIAL_DELAY_RANGE
 
 class DummyKB:
     def __init__(self):
@@ -79,7 +80,7 @@ def test_press_j_batch(monkeypatch):
     worker = _make_worker(dummy)
     monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
 
-    delays = iter([0.6, 1.1, 0.9])
+    delays = iter([0.02, 0.03, 0.9])
     calls = []
 
     def fake_uniform(a, b):
@@ -95,7 +96,11 @@ def test_press_j_batch(monkeypatch):
         ("press", "j"),
         ("press", "j"),
     ]
-    assert calls == [(STEP_PAUSE_MIN, STEP_PAUSE_MAX)] * 3
+    assert calls == [
+        FAST_J_INITIAL_DELAY_RANGE,
+        FAST_J_INITIAL_DELAY_RANGE,
+        (STEP_PAUSE_MIN, STEP_PAUSE_MAX),
+    ]
 
 
 def test_reset_step_open_state_clears_sections_once_per_section():
