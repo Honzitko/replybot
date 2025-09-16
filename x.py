@@ -86,6 +86,10 @@ MAX_WAIT = 15
 # Natural pauses inserted between high-level actions to mimic human pacing.
 STEP_PAUSE_MIN = 0.5
 STEP_PAUSE_MAX = 1.8
+# The discovery feed sometimes requires two rapid ``j`` presses to load more
+# posts.  Keep the first couple of presses almost instantaneous before falling
+# back to the regular pacing used for the remaining presses in the batch.
+FAST_J_INITIAL_DELAY_RANGE = (0.0, 0.05)
 
 
 def ensure_connection(url: str, timeout: float) -> float:
@@ -434,13 +438,16 @@ class SchedulerWorker(threading.Thread):
 
     def _press_j_batch(self, stop_event: Optional[threading.Event] = None) -> bool:
         presses = random.randint(2, 5)
-        for _ in range(presses):
+        for idx in range(presses):
             if self.stop_event.is_set():
                 return False
             if stop_event and stop_event.is_set():
                 return False
             self.kb.press("j")
-            delay = random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX)
+            if idx < 2:
+                delay = random.uniform(*FAST_J_INITIAL_DELAY_RANGE)
+            else:
+                delay = random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX)
             if stop_event:
                 self._pauseable_sleep(delay, chunk=0.1)
             else:
