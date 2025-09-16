@@ -1,6 +1,9 @@
 import importlib.util
 import pathlib
 import sys
+import threading
+import time
+import types
 
 root = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
@@ -25,6 +28,9 @@ def _make_worker(kb):
     worker = object.__new__(SchedulerWorker)
     worker.kb = kb
     worker._push_to_clipboard = lambda text: None
+    worker.stop_event = threading.Event()
+    worker.pause_event = threading.Event()
+    worker._query_navigation_enabled = True
     return worker
 
 
@@ -70,3 +76,47 @@ def test_interact_and_reply(monkeypatch):
         ("press", "i"),
         ("hotkey", ("ctrl", "enter")),
     ]
+
+
+def test_press_j_batch(monkeypatch):
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+    monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
+
+    delays = iter([0.2, 0.21, 0.22])
+
+    def fake_uniform(a, b):
+        return next(delays)
+
+    monkeypatch.setattr(x.random, "uniform", fake_uniform)
+    monkeypatch.setattr(xtime, "sleep", lambda s: None)
+
+    assert worker._press_j_batch() is True
+    assert dummy.calls == [
+        ("press", "j"),
+        ("press", "j"),
+        ("press", "j"),
+    ]
+
+
+def test_query_navigation_context(monkeypatch):
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+
+    batches = []
+
+    def fake_press(self, stop_event=None):
+        batches.append("batch")
+        stop_event.wait(0.01)
+        return True
+
+    def fake_wait(self, stop_event, duration):
+        stop_event.wait(0.01)
+
+    worker._press_j_batch = types.MethodType(fake_press, worker)
+    worker._pause_aware_wait = types.MethodType(fake_wait, worker)
+
+    with worker._query_navigation():
+        time.sleep(0.03)
+
+    assert batches
