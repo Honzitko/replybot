@@ -482,9 +482,10 @@ class SchedulerWorker(threading.Thread):
                         break
                     self._wait_if_paused()
                     max_responses = max(1, section.pick_max_responses())
+                    remaining_attempts = max_responses
                     self._log("INFO", f"Section → {section.name} (limit {max_responses})")
 
-                    while max_responses > 0:
+                    while remaining_attempts > 0:
                         if (self.stop_event.is_set() or
                                 datetime.now(CET) >= step_deadline or
                                 processed >= targets_goal or
@@ -500,6 +501,11 @@ class SchedulerWorker(threading.Thread):
 
                         reply_text = section.pick_response() or "Starting strong and staying consistent."
                         if not self._allowed_for_text(reply_text):
+                            remaining_attempts -= 1
+                            self._log("DEBUG", f"Filtered reply skipped for {section.name}: {reply_text!r}")
+                            if remaining_attempts <= 0:
+                                self._log("INFO", f"Section {section.name} response limit reached (filtered out).")
+                                break
                             continue
 
                         if self.cfg.get("transparency_tag_enabled", False):
@@ -513,8 +519,8 @@ class SchedulerWorker(threading.Thread):
                         self._record_reply(reply_text)
                         processed += 1; self.action_counter += 1; self._bump_counters()
 
-                        max_responses -= 1
-                        if max_responses <= 0:
+                        remaining_attempts -= 1
+                        if remaining_attempts <= 0:
                             self._log("INFO", f"Section {section.name} response limit reached.")
                             break
 
