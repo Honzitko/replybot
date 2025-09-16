@@ -606,6 +606,8 @@ class App(tk.Tk):
         self.worker: Optional[SchedulerWorker] = None
         self.post_scheduler: Optional["PostScheduler"] = None
         self.post_queue = PostDraftQueue()
+        self.run_monitor: Optional["App._RunMonitor"] = None
+        self._session_active: bool = False
 
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
@@ -652,6 +654,102 @@ class App(tk.Tk):
             self.destroy()
             if self.on_cancel:
                 self.on_cancel()
+
+    class _RunMonitor(tk.Toplevel):
+        def __init__(self, master: "App"):
+            super().__init__(master)
+            self.master = master
+            self.title("Session running…")
+            self.resizable(True, True)
+            self.geometry("560x360")
+            self.transient(master)
+            self.start_time = time.time()
+
+            self.status_var = tk.StringVar(value="Status: Running")
+            self.elapsed_var = tk.StringVar(value="Elapsed: 00:00:00")
+
+            header = ttk.Frame(self)
+            header.pack(fill="x", padx=12, pady=(12, 6))
+            ttk.Label(header, textvariable=self.status_var).pack(side="left")
+            ttk.Label(header, textvariable=self.elapsed_var).pack(side="right")
+
+            self.log_text = scrolledtext.ScrolledText(
+                self, wrap="word", state="disabled", height=12
+            )
+            self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+            btns = ttk.Frame(self)
+            btns.pack(fill="x", padx=12, pady=(0, 12))
+
+            self.btn_pause = ttk.Button(btns, text="Pause", command=self._on_pause)
+            self.btn_pause.pack(side="left")
+
+            self.btn_resume = ttk.Button(
+                btns, text="Resume", command=self._on_resume, state="disabled"
+            )
+            self.btn_resume.pack(side="left", padx=(6, 0))
+
+            self.btn_stop = ttk.Button(btns, text="Stop", command=self._on_stop)
+            self.btn_stop.pack(side="right")
+
+            self.btn_copy = ttk.Button(btns, text="Copy logs", command=self._copy_logs)
+            self.btn_copy.pack(side="right", padx=(0, 6))
+
+            self.protocol("WM_DELETE_WINDOW", self._on_stop)
+            self.bind("<Escape>", lambda *_: self._on_stop())
+
+            self.set_paused(False)
+            self.after(200, self._update_elapsed)
+            self.focus()
+
+        def _on_pause(self):
+            self.master.pause_clicked()
+
+        def _on_resume(self):
+            self.master.resume_clicked()
+
+        def _on_stop(self):
+            self.master.stop_clicked()
+
+        def set_paused(self, paused: bool):
+            if paused:
+                self.status_var.set("Status: Paused")
+                self.btn_pause.configure(state="disabled")
+                self.btn_resume.configure(state="normal")
+            else:
+                self.status_var.set("Status: Running")
+                self.btn_pause.configure(state="normal")
+                self.btn_resume.configure(state="disabled")
+
+        def append_log(self, line: str):
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", line + "\n")
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+
+        def _copy_logs(self):
+            self.log_text.configure(state="normal")
+            text = self.log_text.get("1.0", "end-1c")
+            self.log_text.configure(state="disabled")
+            if not text:
+                return
+            self.master.clipboard_clear()
+            self.master.clipboard_append(text)
+            self.status_var.set("Status: Logs copied to clipboard")
+            if self.master.run_monitor is self:
+                self.after(
+                    1500,
+                    lambda: self.set_paused(self.master.pause_event.is_set()),
+                )
+
+        def _update_elapsed(self):
+            if self.master.run_monitor is not self:
+                return
+            elapsed = max(0, int(time.time() - self.start_time))
+            hrs, rem = divmod(elapsed, 3600)
+            mins, secs = divmod(rem, 60)
+            self.elapsed_var.set(f"Elapsed: {hrs:02d}:{mins:02d}:{secs:02d}")
+            self.after(1000, self._update_elapsed)
 
     # UI scaffolding
     def _build_ui(self):
@@ -743,6 +841,7 @@ class App(tk.Tk):
             self.pause_event.set()
             self._append_log("INFO", "Paused due to user input.")
             self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
+            self._set_monitor_paused(True)
 
     def _open_post_editor(self, event=None):
         """Open the :class:`PostEditor` dialog and let the user compose a post."""
@@ -930,6 +1029,40 @@ class App(tk.Tk):
         self.log_text = scrolledtext.ScrolledText(root, state="disabled", wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
 
+    def _open_run_monitor(self):
+        self._close_run_monitor()
+        self.run_monitor = self._RunMonitor(self)
+        self.run_monitor.set_paused(self.pause_event.is_set())
+
+    def _close_run_monitor(self):
+        monitor = self.run_monitor
+        if monitor is not None:
+            self.run_monitor = None
+            try:
+                monitor.destroy()
+            except tk.TclError:
+                pass
+            try:
+                self.focus_set()
+            except tk.TclError:
+                pass
+
+    def _set_monitor_paused(self, paused: bool):
+        if self.run_monitor:
+            self.run_monitor.set_paused(paused)
+
+    def _on_worker_finished(self):
+        self._session_active = False
+        self.stop_event.set()
+        self.pause_event.clear()
+        self.btn_stop.configure(state="disabled")
+        self.btn_pause.configure(state="disabled")
+        self.btn_resume.configure(state="disabled")
+        self.btn_start.configure(state="normal")
+        self.post_scheduler = None
+        self._close_run_monitor()
+        self.worker = None
+
     # UI helpers
     def _single(self, parent, label, var, width=20):
         row = ttk.Frame(parent); row.pack(fill="x", pady=2)
@@ -981,9 +1114,11 @@ class App(tk.Tk):
             self.btn_start.configure(state="normal")
 
         def begin():
-            self._append_log("INFO", "Starting…")
             self.stop_event.clear()
             self.pause_event.clear()
+            self._session_active = True
+            self._open_run_monitor()
+            self._append_log("INFO", "Starting…")
             self.worker = SchedulerWorker(cfg, sections, self.logq, self.stop_event, self.pause_event, self.kb)
             self.worker.start()
             interval = int(cfg.get("post_interval_minutes", 0))
@@ -995,6 +1130,7 @@ class App(tk.Tk):
             self.btn_pause.configure(state="normal")
             self.btn_resume.configure(state="disabled")
             self.btn_stop.configure(state="normal")
+            self._set_monitor_paused(False)
 
         self._Countdown(self, 10, begin, on_cancel)
 
@@ -1002,11 +1138,14 @@ class App(tk.Tk):
         if self.worker and self.worker.is_alive():
             self._append_log("INFO", "Stopping (wait for current step)…")
             self.stop_event.set()
+        self._session_active = False
+        self.pause_event.clear()
         self.btn_stop.configure(state="disabled")
         self.btn_start.configure(state="normal")
         self.btn_pause.configure(state="disabled")
         self.btn_resume.configure(state="disabled")
         self.post_scheduler = None
+        self._close_run_monitor()
 
     def pause_clicked(self):
         if not self.pause_event.is_set():
@@ -1014,6 +1153,7 @@ class App(tk.Tk):
             self._append_log("INFO", "Paused.")
             self.btn_pause.configure(state="disabled")
             self.btn_resume.configure(state="normal")
+            self._set_monitor_paused(True)
 
     def resume_clicked(self):
         if self.pause_event.is_set():
@@ -1021,6 +1161,7 @@ class App(tk.Tk):
             self._append_log("INFO", "Resumed.")
             self.btn_pause.configure(state="normal")
             self.btn_resume.configure(state="disabled")
+            self._set_monitor_paused(False)
 
     # Collectors / Sections / Profiles
     def _csv_to_list(self, s: str) -> List[str]:
@@ -1236,10 +1377,13 @@ class App(tk.Tk):
 
     # Logs
     def _append_log(self, level: str, msg: str):
+        line = f"{datetime.now(CET).strftime('%Y-%m-%d %H:%M:%S')} [{level}] {msg}"
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"{datetime.now(CET).strftime('%Y-%m-%d %H:%M:%S')} [{level}] {msg}\n")
+        self.log_text.insert("end", line + "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+        if self.run_monitor:
+            self.run_monitor.append_log(line)
 
 
     def _drain_logs(self):
@@ -1250,9 +1394,17 @@ class App(tk.Tk):
                 self.log_text.insert("end", line + "\n")
                 self.log_text.see("end")
                 self.log_text.configure(state="disabled")
+                if self.run_monitor:
+                    self.run_monitor.append_log(line)
         except queue.Empty:
             pass
         finally:
+            worker = self.worker
+            if worker and not worker.is_alive():
+                if self._session_active:
+                    self._on_worker_finished()
+                else:
+                    self.worker = None
             # Schedule the next drain so log messages keep flowing
             # through the GUI while the worker thread is running.
             self.after(120, self._drain_logs)
