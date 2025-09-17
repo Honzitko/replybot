@@ -24,6 +24,7 @@ Run:
 
 from __future__ import annotations
 
+import copy
 import os
 import json
 import time
@@ -34,7 +35,7 @@ import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import List, Tuple, Optional, Dict, Set, Callable
+from typing import List, Tuple, Optional, Dict, Set, Callable, Any
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
@@ -45,7 +46,7 @@ except Exception:  # pragma: no cover - optional dependency
     pynkeyboard = None
 from keyboard_controller import KeyboardController, is_app_generated
 from news_library import NewsLibrary
-from post_library import PostLibrary
+from post_library import PostLibrary, create_post_record, store_generated_draft
 from rss_ingestor import DEFAULT_INTERVAL_SECONDS, RSSIngestor
 
 try:
@@ -174,32 +175,74 @@ DEFAULT_SECTIONS_SEED = [
 class PostDraftQueue:
     """Very small in-memory FIFO queue for composed posts.
 
-    The real application may later expand this to persist posts or schedule
-    them for a specific time.  For the purposes of the tests it simply keeps a
-    list of posts that have been saved through the :class:`PostEditor` dialog.
+    The queue stores full metadata dictionaries so operators can inspect the
+    provenance of each draft before acting on it.  Items are defensive copies of
+    the dictionaries returned by :mod:`post_library` helpers.
     """
 
     def __init__(self) -> None:
-        self.posts: List[str] = []
+        self.posts: List[Dict[str, Any]] = []
 
-    def push(self, text: str) -> None:
-        """Store ``text`` for later processing if it is not empty."""
+    def push(self, draft: Dict[str, Any] | str) -> Optional[Dict[str, Any]]:
+        """Store ``draft`` for later processing.
 
-        if text:
-            self.posts.append(text)
+        ``draft`` may be a plain string (legacy behaviour) or a mapping with
+        additional metadata.  Empty drafts are ignored and ``None`` is
+        returned.
+        """
+
+        if isinstance(draft, dict):
+            known_keys = {"id", "text", "source", "created_at", "rss_link", "status", "metadata"}
+            extra = {k: draft[k] for k in draft.keys() - known_keys}
+            metadata = draft.get("metadata")
+            if extra:
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                else:
+                    metadata = copy.deepcopy(metadata)
+                metadata.setdefault("legacy", {}).update(extra)
+            record = create_post_record(
+                draft.get("text", ""),
+                source=draft.get("source"),
+                created_at=draft.get("created_at"),
+                rss_link=draft.get("rss_link"),
+                status=draft.get("status"),
+                metadata=metadata,
+                record_id=draft.get("id"),
+            )
+        else:
+            record = create_post_record(str(draft or ""))
+
+        if not record["text"]:
+            return None
+
+        snapshot = copy.deepcopy(record)
+        self.posts.append(snapshot)
+        return snapshot
 
 
 class PostEditor(tk.Toplevel):
-    """Simple dialog allowing the user to compose and save a post."""
+    """Simple dialog allowing the user to compose, review, and queue drafts."""
 
-    def __init__(self, master: tk.Misc, queue: PostDraftQueue):
+    def __init__(
+        self,
+        master: tk.Misc,
+        queue: PostDraftQueue,
+        *,
+        initial_text: str = "",
+        on_save: Optional[Callable[[str], None]] = None,
+        title: str = "Post draft",
+    ) -> None:
         super().__init__(master)
-        self.title("New post")
+        self.title(title)
         self.queue = queue
         self.resizable(True, True)
+        self.on_save = on_save
 
         self.txt = scrolledtext.ScrolledText(self, width=60, height=10)
         self.txt.pack(fill="both", expand=True, padx=10, pady=10)
+        if initial_text:
+            self.txt.insert("1.0", initial_text)
 
         btn = ttk.Button(self, text="Save", command=self._save)
         btn.pack(pady=(0, 10))
@@ -207,10 +250,18 @@ class PostEditor(tk.Toplevel):
         # Allow closing via window manager controls
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
+        try:
+            self.txt.focus_set()
+        except tk.TclError:
+            pass
+
     def _save(self) -> None:
         content = self.txt.get("1.0", "end").strip()
         if content:
-            self.queue.push(content)
+            if self.on_save is not None:
+                self.on_save(content)
+            else:
+                self.queue.push(content)
         self.destroy()
 
 # ---- Worker (manual flow, no key simulation)
@@ -610,6 +661,7 @@ class App(tk.Tk):
         self.post_scheduler: Optional["PostScheduler"] = None
         self.rss_ingestor: Optional[RSSIngestor] = None
         self.post_queue = PostDraftQueue()
+        self.posts_tree: Optional[ttk.Treeview] = None
         self.run_monitor: Optional["App._RunMonitor"] = None
         self._session_active: bool = False
 
@@ -886,10 +938,10 @@ class App(tk.Tk):
             self.after(0, lambda: (self.btn_pause.configure(state="disabled"), self.btn_resume.configure(state="normal")))
             self._set_monitor_paused(True)
 
-    def _open_post_editor(self, event=None):
-        """Open the :class:`PostEditor` dialog and let the user compose a post."""
+    def _open_post_editor(self, event=None, draft: Optional[Dict[str, Any]] = None):
+        """Open the :class:`PostEditor` dialog for a new or existing draft."""
 
-        PostEditor(self, self.post_queue)
+        self._open_draft_editor(draft)
 
     def _build_session_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
@@ -1036,50 +1088,181 @@ class App(tk.Tk):
         list_frame = ttk.Frame(f)
         list_frame.pack(side="left", fill="both", expand=True)
 
-        self.posts_list = tk.Listbox(list_frame)
-        self.posts_list.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(list_frame, command=self.posts_list.yview)
+        columns = ("status", "source", "created", "preview")
+        self.posts_tree = ttk.Treeview(
+            list_frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+        )
+        self.posts_tree.heading("status", text="Status")
+        self.posts_tree.heading("source", text="Source")
+        self.posts_tree.heading("created", text="Created")
+        self.posts_tree.heading("preview", text="Preview")
+        self.posts_tree.column("status", width=90, stretch=False, anchor="w")
+        self.posts_tree.column("source", width=180, stretch=False, anchor="w")
+        self.posts_tree.column("created", width=140, stretch=False, anchor="w")
+        self.posts_tree.column("preview", width=520, stretch=True, anchor="w")
+        self.posts_tree.pack(side="left", fill="both", expand=True)
+
+        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.posts_tree.yview)
         scroll.pack(side="left", fill="y")
-        self.posts_list.configure(yscrollcommand=scroll.set)
+        self.posts_tree.configure(yscrollcommand=scroll.set)
+        self.posts_tree.bind("<Double-Button-1>", lambda *_: self._open_selected_draft())
 
         btns = ttk.Frame(f)
         btns.pack(side="left", fill="y", padx=(10, 0))
-        ttk.Button(btns, text="Add", command=self._add_post).pack(fill="x")
-        ttk.Button(btns, text="Edit", command=self._edit_post).pack(fill="x", pady=4)
-        ttk.Button(btns, text="Delete", command=self._delete_post).pack(fill="x")
+        ttk.Button(btns, text="Compose…", command=self._compose_post).pack(fill="x")
+        ttk.Button(btns, text="Open draft", command=self._open_selected_draft).pack(fill="x", pady=(4, 0))
+        ttk.Button(btns, text="Mark used", command=lambda: self._mark_selected_draft("used")).pack(fill="x", pady=(12, 0))
+        ttk.Button(btns, text="Archive", command=lambda: self._mark_selected_draft("archived")).pack(fill="x", pady=(4, 0))
+        ttk.Button(btns, text="Delete", command=self._delete_post).pack(fill="x", pady=(12, 0))
 
         self._refresh_posts()
 
     def _refresh_posts(self):
-        self.posts_list.delete(0, tk.END)
-        for post in self.post_library.get_posts():
-            self.posts_list.insert(tk.END, post)
-
-    def _add_post(self):
-        text = simpledialog.askstring("Add Post", "Post text:", parent=self)
-        if text:
-            self.post_library.add_post(text)
-            self._refresh_posts()
-
-    def _edit_post(self):
-        sel = self.posts_list.curselection()
-        if not sel:
+        tree = getattr(self, "posts_tree", None)
+        if tree is None:
             return
-        idx = sel[0]
-        current = self.post_library.get_posts()[idx]
-        text = simpledialog.askstring("Edit Post", "Post text:", initialvalue=current, parent=self)
-        if text is not None:
-            self.post_library.update_post(idx, text)
+        for item in tree.get_children():
+            tree.delete(item)
+
+        for record in self.post_library.get_entries():
+            preview = str(record.get("text", "") or "").replace("\n", " ")
+            preview = " ".join(preview.split())
+            if len(preview) > 160:
+                preview = preview[:157] + "…"
+            created = self._format_draft_created(record.get("created_at"))
+            source = self._format_draft_source(record)
+            status = str(record.get("status", "draft")).title()
+            record_id = record.get("id")
+            if not record_id:
+                continue
+            tree.insert("", "end", iid=str(record_id), values=(status, source, created, preview))
+
+    def _open_draft_editor(self, record: Optional[Dict[str, Any]] = None) -> None:
+        if record is None:
+            def on_save(content: str) -> None:
+                new_record = self.post_library.add_post(content, source="manual")
+                if new_record:
+                    self.post_queue.push(new_record)
+                    self._refresh_posts()
+
+            PostEditor(self, self.post_queue, on_save=on_save, title="Compose post")
+            return
+
+        def on_save(content: str) -> None:
+            record_id = record.get("id")
+            updated = self.post_library.update_post(record_id, content)
+            target = updated or self.post_library.get_post_by_id(record_id)
+            if target:
+                self.post_queue.push(target)
             self._refresh_posts()
+
+        PostEditor(
+            self,
+            self.post_queue,
+            initial_text=record.get("text", ""),
+            on_save=on_save,
+            title="Review draft",
+        )
+
+    def _compose_post(self):
+        self._open_draft_editor()
+
+    def _open_selected_draft(self):
+        record = self._get_selected_record()
+        if not record:
+            return
+        self._open_draft_editor(record)
+
+    def _mark_selected_draft(self, status: str) -> None:
+        record = self._get_selected_record()
+        if not record:
+            return
+        record_id = record.get("id")
+        try:
+            self.post_library.set_status(record_id, status)
+        except ValueError as exc:
+            messagebox.showerror("Invalid status", str(exc))
+            return
+        self._refresh_posts()
+
+    def ingest_generated_draft(
+        self,
+        text: str,
+        rss_item: Optional[Dict[str, Any]] = None,
+        *,
+        source: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Store a generated draft with provenance and refresh the UI."""
+
+        record = store_generated_draft(
+            self.post_library,
+            self.post_queue,
+            text,
+            rss_item=rss_item,
+            source=source,
+        )
+        if record:
+            self._refresh_posts()
+        return record
 
     def _delete_post(self):
-        sel = self.posts_list.curselection()
-        if not sel:
+        record = self._get_selected_record()
+        if not record:
             return
-        idx = sel[0]
-        if messagebox.askyesno("Delete Post", "Are you sure?"):
-            self.post_library.delete_post(idx)
+        preview = " ".join(str(record.get("text", "") or "").split())
+        preview = preview[:80] + ("…" if len(preview) > 80 else "")
+        if messagebox.askyesno("Delete Post", f"Delete the selected draft?\n\n{preview}"):
+            self.post_library.delete_post(record.get("id"))
             self._refresh_posts()
+
+    def _get_selected_post_id(self) -> Optional[str]:
+        tree = getattr(self, "posts_tree", None)
+        if tree is None:
+            return None
+        selection = tree.selection()
+        if not selection:
+            return None
+        return selection[0]
+
+    def _get_selected_record(self) -> Optional[Dict[str, Any]]:
+        record_id = self._get_selected_post_id()
+        if not record_id:
+            return None
+        return self.post_library.get_post_by_id(record_id)
+
+    def _format_draft_source(self, record: Dict[str, Any]) -> str:
+        source = str(record.get("source") or "manual").strip()
+        metadata = record.get("metadata") or {}
+        rss_meta = metadata.get("rss") if isinstance(metadata, dict) else None
+        if source.lower() in {"", "rss"} and isinstance(rss_meta, dict):
+            feed = rss_meta.get("source") or rss_meta.get("title")
+            link = rss_meta.get("link") or rss_meta.get("url")
+            candidate = feed or link or "rss"
+        else:
+            candidate = source or "manual"
+        candidate = candidate or "manual"
+        candidate = candidate.strip() or "manual"
+        if candidate.lower() == "manual":
+            display = "Manual"
+        else:
+            display = candidate
+        if len(display) > 40:
+            display = display[:37] + "…"
+        return display
+
+    def _format_draft_created(self, created_at: Any) -> str:
+        if not created_at:
+            return "—"
+        try:
+            dt = datetime.fromisoformat(str(created_at))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(CET).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return str(created_at)
 
     def _on_rss_status(self, last, next_fetch, paused):
         self.after(0, lambda: self._apply_rss_status(last, next_fetch, paused))
