@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from typing import Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 
 class NewsLibrary:
@@ -16,6 +16,8 @@ class NewsLibrary:
     against feeds that occasionally recycle identifiers but emit a new
     timestamp when an article is updated.
     """
+
+    VALID_STATUSES = {"new", "processed", "ignored"}
 
     def __init__(self, path: str | os.PathLike[str] | None = None) -> None:
         base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -49,6 +51,7 @@ class NewsLibrary:
         except Exception:  # pragma: no cover - unexpected parse failure
             self._items = []
 
+        self._apply_defaults()
         self._rebuild_index()
         return list(self._items)
 
@@ -89,7 +92,9 @@ class NewsLibrary:
                 if key in self._seen:
                     continue
                 self._seen.add(key)
-                self._items.append(dict(item))
+                new_item = dict(item)
+                self._ensure_status(new_item)
+                self._items.append(new_item)
                 inserted += 1
 
             if inserted:
@@ -99,4 +104,62 @@ class NewsLibrary:
                 self.save()
 
         return inserted
+
+    # ------------------------------------------------------------------
+    def set_item_status(self, item: Dict[str, Any], status: str) -> Dict[str, Any]:
+        """Update ``item`` to ``status`` and persist the change.
+
+        ``item`` must be one of the dictionaries previously returned by
+        :meth:`get_items`.  ``status`` is normalised and validated against
+        :data:`VALID_STATUSES`.
+        """
+
+        if not isinstance(item, dict):  # pragma: no cover - guard against misuse
+            raise TypeError("item must be a mapping")
+
+        normalised_status = str(status or "").strip().lower() or "new"
+        if normalised_status not in self.VALID_STATUSES:
+            raise ValueError(f"Invalid news item status: {status!r}")
+
+        key = self._dedup_key(item)
+
+        with self._lock:
+            target = self._find_item_by_key(key)
+            if target is None:
+                raise KeyError("News item not found")
+
+            if target.get("status") != normalised_status:
+                target["status"] = normalised_status
+                self.save()
+
+            return dict(target)
+
+    def mark_processed(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return self.set_item_status(item, "processed")
+
+    def mark_ignored(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return self.set_item_status(item, "ignored")
+
+    def reset_status(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return self.set_item_status(item, "new")
+
+    # ------------------------------------------------------------------
+    def _apply_defaults(self) -> None:
+        for item in self._items:
+            if not isinstance(item, dict):
+                continue
+            self._ensure_status(item)
+
+    def _ensure_status(self, item: Dict[str, Any]) -> None:
+        status = str(item.get("status", "new") or "").strip().lower()
+        if status not in self.VALID_STATUSES:
+            status = "new"
+        item["status"] = status
+
+    def _find_item_by_key(self, key: str) -> Optional[Dict[str, Any]]:
+        for existing in self._items:
+            if self._dedup_key(existing) == key:
+                self._ensure_status(existing)
+                return existing
+        return None
 
