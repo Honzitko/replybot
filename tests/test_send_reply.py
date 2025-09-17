@@ -17,7 +17,9 @@ xtime = x.time
 STEP_PAUSE_MIN = x.STEP_PAUSE_MIN
 STEP_PAUSE_MAX = x.STEP_PAUSE_MAX
 FAST_J_INITIAL_DELAY_RANGE = x.FAST_J_INITIAL_DELAY_RANGE
+
 POPULAR_INITIAL_J_COUNT = x.POPULAR_INITIAL_J_COUNT
+
 
 class DummyKB:
     def __init__(self):
@@ -131,6 +133,7 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
 
     def fake_randint(a, b):
         ranges.append((a, b))
+
         return 3
 
     uniform_calls = []
@@ -146,6 +149,7 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
     monkeypatch.setattr(xtime, "sleep", lambda s: None)
 
     assert worker._press_j_batch() is True
+
     assert dummy.calls == [("press", "j")] * POPULAR_INITIAL_J_COUNT
     assert ranges == []
 
@@ -153,6 +157,7 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
     fast_count_first = min(2, POPULAR_INITIAL_J_COUNT)
     assert first_call_uniforms[:fast_count_first] == [FAST_J_INITIAL_DELAY_RANGE] * fast_count_first
     assert all(r == (STEP_PAUSE_MIN, STEP_PAUSE_MAX) for r in first_call_uniforms[fast_count_first:])
+
     assert worker._popular_initial_scroll_pending is False
 
     dummy.calls.clear()
@@ -162,6 +167,7 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
     assert worker._press_j_batch() is True
     assert dummy.calls == [("press", "j")] * 3
     assert ranges == [(2, 5)]
+
 
     second_call_uniforms = uniform_calls.copy()
     fast_count_second = min(2, len(second_call_uniforms))
