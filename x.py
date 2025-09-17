@@ -98,8 +98,10 @@ FAST_J_INITIAL_DELAY_RANGE = (0.0, 0.05)
 # ``Popular`` search results can surface stickied tweets, ads, or other
 # elements that require a deeper initial scroll before reaching fresh posts.
 # When the session opens a Popular search we overshoot the first batch of posts
-# by sending a larger burst of ``j`` presses.
-POPULAR_INITIAL_J_RANGE = (6, 9)
+
+# by sending a fixed burst of nine ``j`` presses.
+POPULAR_INITIAL_J_COUNT = 9
+
 
 POPULAR_SEARCH_MODES: Set[str] = {"popular", "top"}
 LATEST_SEARCH_MODES: Set[str] = {"latest", "nejnovější", "nejnovejsi", "live"}
@@ -650,7 +652,9 @@ class SchedulerWorker(threading.Thread):
 
     def _press_j_batch(self, stop_event: Optional[threading.Event] = None) -> bool:
         if getattr(self, "_popular_initial_scroll_pending", False):
-            presses = random.randint(*POPULAR_INITIAL_J_RANGE)
+
+            presses = POPULAR_INITIAL_J_COUNT
+
             self._popular_initial_scroll_pending = False
         else:
             presses = random.randint(2, 5)
