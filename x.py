@@ -47,6 +47,7 @@ except Exception:  # pragma: no cover - optional dependency
 from keyboard_controller import KeyboardController, is_app_generated
 from news_library import NewsLibrary
 from post_library import PostLibrary, create_post_record, store_generated_draft
+from post_scheduler import generate_post_from_rss
 from rss_ingestor import DEFAULT_INTERVAL_SECONDS, RSSIngestor
 
 try:
@@ -792,8 +793,10 @@ class App(tk.Tk):
         self.rss_ingestor: Optional[RSSIngestor] = None
         self.post_queue = PostDraftQueue()
         self.posts_tree: Optional[ttk.Treeview] = None
+        self.news_tree: Optional[ttk.Treeview] = None
         self.run_monitor: Optional["App._RunMonitor"] = None
         self._session_active: bool = False
+        self._news_items_by_key: Dict[str, Dict[str, Any]] = {}
 
         self._rss_enabled = False
         default_interval_minutes = int(DEFAULT_INTERVAL_SECONDS // 60)
@@ -960,6 +963,7 @@ class App(tk.Tk):
         self.tab_guardrails = ttk.Frame(self.nb)
         self.tab_sections = ttk.Frame(self.nb)
         self.tab_posts = ttk.Frame(self.nb)
+        self.tab_news = ttk.Frame(self.nb)
         self.tab_review = ttk.Frame(self.nb)
         self.tab_log = ttk.Frame(self.nb)
 
@@ -969,6 +973,7 @@ class App(tk.Tk):
         self.nb.add(self.tab_guardrails, text="Guardrails")
         self.nb.add(self.tab_sections, text="Sections (Queries/Responses)")
         self.nb.add(self.tab_posts, text="Posts")
+        self.nb.add(self.tab_news, text="RSS Review")
         self.nb.add(self.tab_review, text="Review & Transparency")
         self.nb.add(self.tab_log, text="Logs")
 
@@ -978,6 +983,7 @@ class App(tk.Tk):
         self._build_guardrails_tab(self.tab_guardrails)
         self._build_sections_tab(self.tab_sections)
         self._build_posts_tab(self.tab_posts)
+        self._build_news_tab(self.tab_news)
         self._build_review_tab(self.tab_review)
         self._build_log_tab(self.tab_log)
 
@@ -1222,6 +1228,188 @@ class App(tk.Tk):
                 "txt_responses": txt_r,
             })
         self._bind_dirty(nb)
+
+    def _build_news_tab(self, root):
+        wrapper = ttk.Frame(root)
+        wrapper.pack(fill="both", expand=True, padx=10, pady=10)
+
+        table_frame = ttk.Frame(wrapper)
+        table_frame.pack(side="left", fill="both", expand=True)
+
+        columns = ("status", "title", "summary", "source", "published")
+        self.news_tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+        )
+        self.news_tree.heading("status", text="Status")
+        self.news_tree.heading("title", text="Title")
+        self.news_tree.heading("summary", text="Summary")
+        self.news_tree.heading("source", text="Source")
+        self.news_tree.heading("published", text="Published")
+        self.news_tree.column("status", width=100, stretch=False, anchor="w")
+        self.news_tree.column("title", width=280, stretch=True, anchor="w")
+        self.news_tree.column("summary", width=360, stretch=True, anchor="w")
+        self.news_tree.column("source", width=160, stretch=False, anchor="w")
+        self.news_tree.column("published", width=150, stretch=False, anchor="w")
+        self.news_tree.pack(side="left", fill="both", expand=True)
+
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.news_tree.yview)
+        scroll.pack(side="left", fill="y")
+        self.news_tree.configure(yscrollcommand=scroll.set)
+        self.news_tree.bind("<Double-Button-1>", lambda *_: self._news_generate_draft())
+
+        btns = ttk.Frame(wrapper)
+        btns.pack(side="left", fill="y", padx=(10, 0))
+        ttk.Button(btns, text="Generate draft", command=self._news_generate_draft).pack(fill="x")
+        ttk.Button(btns, text="Mark processed", command=lambda: self._news_mark_status("processed")).pack(
+            fill="x", pady=(8, 0)
+        )
+        ttk.Button(btns, text="Ignore", command=lambda: self._news_mark_status("ignored")).pack(
+            fill="x", pady=(4, 0)
+        )
+        ttk.Button(btns, text="Reset status", command=lambda: self._news_mark_status("new")).pack(
+            fill="x", pady=(12, 0)
+        )
+        ttk.Button(btns, text="Refresh", command=self._refresh_news_items).pack(fill="x", pady=(24, 0))
+
+        self._refresh_news_items()
+
+    def _refresh_news_items(self) -> None:
+        tree = getattr(self, "news_tree", None)
+        if tree is None:
+            return
+
+        previous_selection = tree.selection()
+        for item_id in tree.get_children():
+            tree.delete(item_id)
+
+        try:
+            items = self.news_library.get_items()
+        except Exception as exc:
+            logging.error("Failed to read RSS items: %s", exc, exc_info=True)
+            items = []
+
+        mapping: Dict[str, Dict[str, Any]] = {}
+        for entry in items:
+            if not isinstance(entry, dict):
+                continue
+            key = self._news_item_key(entry)
+            mapping[key] = entry
+
+            status_raw = str(entry.get("status", "new") or "").strip().lower()
+            if status_raw not in getattr(self.news_library, "VALID_STATUSES", {"new", "processed", "ignored"}):
+                status_raw = "new"
+            status_display = status_raw.title() if status_raw else "New"
+
+            title = str(entry.get("title") or entry.get("link") or "—")
+            title = " ".join(title.split())
+            if len(title) > 120:
+                title = title[:117] + "…"
+
+            summary = str(entry.get("summary") or "")
+            summary = " ".join(summary.split())
+            if len(summary) > 200:
+                summary = summary[:197] + "…"
+
+            source = str(entry.get("source") or "—").strip() or "—"
+            if len(source) > 60:
+                source = source[:57] + "…"
+
+            published = self._format_news_timestamp(entry.get("published"))
+
+            tree.insert(
+                "",
+                "end",
+                iid=key,
+                values=(status_display, title, summary, source, published),
+            )
+
+        self._news_items_by_key = mapping
+
+        if previous_selection:
+            for iid in previous_selection:
+                if iid in mapping:
+                    tree.selection_set(iid)
+                    tree.focus(iid)
+                    tree.see(iid)
+                    break
+
+    def _news_item_key(self, item: Dict[str, Any]) -> str:
+        ident = str(item.get("id") or item.get("link") or item.get("title") or "")
+        published = str(item.get("published") or "")
+        return f"{ident}|{published}"
+
+    def _get_selected_news_item(self) -> Optional[Dict[str, Any]]:
+        tree = getattr(self, "news_tree", None)
+        if tree is None:
+            return None
+        selection = tree.selection()
+        if not selection:
+            return None
+        key = selection[0]
+        return self._news_items_by_key.get(key)
+
+    def _news_generate_draft(self) -> Optional[Dict[str, Any]]:
+        item = self._get_selected_news_item()
+        if not item:
+            return None
+        return self._generate_draft_from_news_item(item)
+
+    def _generate_draft_from_news_item(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            settings = self._collect_config()
+        except Exception as exc:
+            messagebox.showerror("Invalid settings", str(exc))
+            return None
+
+        text, _media_path = generate_post_from_rss(item, settings)
+        record = self.ingest_generated_draft(text, rss_item=item, source="rss")
+
+        if record:
+            try:
+                self.news_library.mark_processed(item)
+            except Exception as exc:
+                logging.error("Failed to update RSS item status: %s", exc, exc_info=True)
+
+        self._refresh_news_items()
+        return record
+
+    def _news_mark_status(self, status: str) -> None:
+        item = self._get_selected_news_item()
+        if not item:
+            return
+
+        try:
+            if status == "processed":
+                self.news_library.mark_processed(item)
+            elif status == "ignored":
+                self.news_library.mark_ignored(item)
+            else:
+                self.news_library.reset_status(item)
+        except ValueError as exc:
+            messagebox.showerror("Invalid status", str(exc))
+        except KeyError:
+            messagebox.showwarning("Missing item", "The selected RSS entry is no longer available.")
+        except Exception as exc:
+            logging.error("Failed to update RSS item: %s", exc, exc_info=True)
+        finally:
+            self._refresh_news_items()
+
+    def _format_news_timestamp(self, value: Any) -> str:
+        if not value:
+            return "—"
+        try:
+            dt = datetime.fromisoformat(str(value))
+        except Exception:
+            return str(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            return dt.astimezone(CET).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return dt.strftime("%Y-%m-%d %H:%M")
 
     def _build_posts_tab(self, root):
         f = ttk.Frame(root)
