@@ -617,10 +617,13 @@ class App(tk.Tk):
         default_interval_minutes = int(DEFAULT_INTERVAL_SECONDS // 60)
         self.var_rss_feeds = tk.StringVar(value="")
         self.var_rss_interval_minutes = tk.IntVar(value=default_interval_minutes)
+        self.var_openai_api_key = tk.StringVar(value="")
+        self.var_rss_max_length = tk.IntVar(value=280)
         self.rss_last_fetch_var = tk.StringVar(value="Last fetch: —")
         self.rss_next_fetch_var = tk.StringVar(value="Next fetch: — (disabled)")
         self._rss_last_value: Optional[datetime] = None
         self._rss_next_value: Optional[datetime] = None
+        self.txt_rss_persona: Optional[scrolledtext.ScrolledText] = None
 
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
@@ -823,6 +826,32 @@ class App(tk.Tk):
 
         self.lbl_dirty = ttk.Label(f, text="", foreground="#b36b00")
         self.lbl_dirty.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10,0))
+
+        llm_frame = ttk.LabelFrame(f, text="AI RSS summarisation")
+        llm_frame.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
+        llm_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(llm_frame, text="OpenAI API key:").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 2))
+        entry_api = ttk.Entry(llm_frame, textvariable=self.var_openai_api_key, show="*", width=42)
+        entry_api.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=(8, 2))
+        entry_api.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+
+        ttk.Label(llm_frame, text="Persona instructions:").grid(row=1, column=0, sticky="nw", padx=8, pady=(0, 6))
+        self.txt_rss_persona = scrolledtext.ScrolledText(llm_frame, height=4, wrap="word")
+        self.txt_rss_persona.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 6))
+        self.txt_rss_persona.bind("<<Modified>>", self._on_text_modified)
+
+        ttk.Label(llm_frame, text="Maximum length:").grid(row=2, column=0, sticky="w", padx=8, pady=(0, 8))
+        length_row = ttk.Frame(llm_frame)
+        length_row.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=(0, 8))
+        entry_length = ttk.Entry(length_row, textvariable=self.var_rss_max_length, width=6)
+        entry_length.pack(side="left")
+        entry_length.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+        ttk.Label(length_row, text="characters").pack(side="left", padx=(4, 0))
+
+        ttk.Label(llm_frame, text="Leave API key blank to use the manual placeholder.").grid(
+            row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 8)
+        )
 
         # Search mode + open policy
         row3 = ttk.LabelFrame(f, text="Search")
@@ -1316,6 +1345,25 @@ class App(tk.Tk):
             "emergency_early_end_probability": 0.0,
         }
 
+        persona_text = ""
+        if self.txt_rss_persona is not None:
+            persona_text = self.txt_rss_persona.get("1.0", "end").strip()
+
+        try:
+            max_length = int(self.var_rss_max_length.get())
+        except Exception as exc:
+            raise ValueError("Maximum post length must be a positive integer") from exc
+        if max_length <= 0:
+            raise ValueError("Maximum post length must be a positive integer")
+
+        cfg.update(
+            {
+                "openai_api_key": self.var_openai_api_key.get().strip(),
+                "rss_persona_text": persona_text,
+                "rss_max_post_length": max_length,
+            }
+        )
+
         feeds_raw = self.var_rss_feeds.get().replace("\n", ",")
         feed_urls = [u.strip() for u in feeds_raw.split(",") if u.strip()]
         interval_minutes = max(1, int(self.var_rss_interval_minutes.get()))
@@ -1395,6 +1443,18 @@ class App(tk.Tk):
         policy = str(cfg.get("search_open_policy", "once_per_step"))
         ui_policy = {"every_time":"Every time","once_per_step":"Once per step","once_per_section":"Once per section"}.get(policy, "Once per step")
         self.var_open_policy.set(ui_policy)
+
+        self.var_openai_api_key.set(cfg.get("openai_api_key", ""))
+        if self.txt_rss_persona is not None:
+            persona_value = cfg.get("rss_persona_text", "")
+            self.txt_rss_persona.delete("1.0", "end")
+            if persona_value:
+                self.txt_rss_persona.insert("1.0", persona_value)
+            self.txt_rss_persona.edit_modified(False)
+        try:
+            self.var_rss_max_length.set(int(cfg.get("rss_max_post_length", 280)))
+        except Exception:
+            self.var_rss_max_length.set(280)
 
         feeds_value = cfg.get("rss_feed_urls", [])
         if isinstance(feeds_value, (list, tuple)):

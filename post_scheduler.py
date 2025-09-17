@@ -13,6 +13,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
+try:  # Local import works both as a package and as a script
+    from . import llm_client as _llm_client  # type: ignore
+except ImportError:  # pragma: no cover - fallback for direct execution
+    try:
+        import llm_client as _llm_client  # type: ignore
+    except ImportError:  # pragma: no cover - missing optional dependency
+        _llm_client = None
+
 try:  # Optional dependency used for the API stub
     import requests  # pragma: no cover - requests may be unavailable
 except Exception:  # pragma: no cover - keep the module importable
@@ -39,6 +47,20 @@ def generate_post_from_rss(
         ``(text, media_path)`` where ``media_path`` is ``None`` when no media
         was produced or the API call failed.
     """
+
+    if _llm_client is not None:
+        try:
+            persona_settings = _llm_client.load_llm_settings(settings)
+        except Exception as exc:  # pragma: no cover - defensive against bad settings
+            logging.error("Failed to load LLM settings: %s", exc, exc_info=True)
+            persona_settings = None
+        if persona_settings:
+            try:
+                text = _llm_client.summarize_rss_item(rss_item, persona_settings)
+                return text, None
+            except Exception as exc:
+                logging.error("LLM summarisation failed: %s", exc, exc_info=True)
+                return rss_item.get("title", ""), None
 
     endpoint = settings.get("rss_api_endpoint", "http://localhost:8000/generate")
     payload = {"rss_item": rss_item, "settings": settings}
