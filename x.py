@@ -33,7 +33,7 @@ import threading
 import logging
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import List, Tuple, Optional, Dict, Set, Callable
 
 import tkinter as tk
@@ -44,7 +44,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     pynkeyboard = None
 from keyboard_controller import KeyboardController, is_app_generated
+from news_library import NewsLibrary
 from post_library import PostLibrary
+from rss_ingestor import DEFAULT_INTERVAL_SECONDS, RSSIngestor
 
 try:
     import requests
@@ -597,6 +599,7 @@ class App(tk.Tk):
         self.config_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "configs")
         os.makedirs(self.config_dir, exist_ok=True)
 
+        self.news_library = NewsLibrary(os.path.join(self.config_dir, "news.json"))
         self.post_library = PostLibrary(os.path.join(self.config_dir, "posts.json"))
 
         self.logq: queue.Queue[str] = queue.Queue()
@@ -605,9 +608,19 @@ class App(tk.Tk):
         self.kb = KeyboardController()
         self.worker: Optional[SchedulerWorker] = None
         self.post_scheduler: Optional["PostScheduler"] = None
+        self.rss_ingestor: Optional[RSSIngestor] = None
         self.post_queue = PostDraftQueue()
         self.run_monitor: Optional["App._RunMonitor"] = None
         self._session_active: bool = False
+
+        self._rss_enabled = False
+        default_interval_minutes = int(DEFAULT_INTERVAL_SECONDS // 60)
+        self.var_rss_feeds = tk.StringVar(value="")
+        self.var_rss_interval_minutes = tk.IntVar(value=default_interval_minutes)
+        self.rss_last_fetch_var = tk.StringVar(value="Last fetch: —")
+        self.rss_next_fetch_var = tk.StringVar(value="Next fetch: — (disabled)")
+        self._rss_last_value: Optional[datetime] = None
+        self._rss_next_value: Optional[datetime] = None
 
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
@@ -617,6 +630,7 @@ class App(tk.Tk):
 
         self._build_ui()
         self._init_default_profile()
+        self._set_rss_enabled(False)
         self.after(120, self._drain_logs)
 
         # global keyboard listener to auto-pause on manual input
@@ -969,6 +983,27 @@ class App(tk.Tk):
         f = ttk.Frame(root)
         f.pack(fill="both", expand=True, padx=10, pady=10)
 
+        rss_frame = ttk.LabelFrame(f, text="RSS ingestion")
+        rss_frame.pack(fill="x", pady=(0, 12))
+        rss_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(rss_frame, text="Feed URLs (comma-separated):").grid(row=0, column=0, sticky="w")
+        entry_feeds = ttk.Entry(rss_frame, textvariable=self.var_rss_feeds)
+        entry_feeds.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        entry_feeds.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+
+        ttk.Label(rss_frame, text="Fetch interval (minutes):").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        entry_interval = ttk.Entry(rss_frame, textvariable=self.var_rss_interval_minutes, width=10)
+        entry_interval.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        entry_interval.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+
+        ttk.Label(rss_frame, textvariable=self.rss_last_fetch_var).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        )
+        ttk.Label(rss_frame, textvariable=self.rss_next_fetch_var).grid(
+            row=3, column=0, columnspan=2, sticky="w"
+        )
+
         list_frame = ttk.Frame(f)
         list_frame.pack(side="left", fill="both", expand=True)
 
@@ -1017,6 +1052,51 @@ class App(tk.Tk):
             self.post_library.delete_post(idx)
             self._refresh_posts()
 
+    def _on_rss_status(self, last, next_fetch, paused):
+        self.after(0, lambda: self._apply_rss_status(last, next_fetch, paused))
+
+    def _apply_rss_status(self, last, next_fetch, paused: bool) -> None:
+        if last is not None:
+            self._rss_last_value = last
+        if next_fetch is not None:
+            self._rss_next_value = next_fetch
+
+        display_last = self._rss_last_value
+        display_next = self._rss_next_value if self._rss_enabled else None
+
+        last_text = f"Last fetch: {self._format_rss_time(display_last)}"
+        if not self._rss_enabled:
+            last_text += " (disabled)"
+
+        next_text = f"Next fetch: {self._format_rss_time(display_next)}"
+        suffix = ""
+        if not self._rss_enabled:
+            suffix = " (disabled)"
+        elif paused:
+            suffix = " (paused)"
+        elif display_next and display_next <= datetime.now(timezone.utc):
+            suffix = " (due)"
+
+        self.rss_last_fetch_var.set(last_text)
+        self.rss_next_fetch_var.set(next_text + suffix)
+
+    def _format_rss_time(self, value):
+        if not value:
+            return "—"
+        try:
+            return value.astimezone(CET).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return value.strftime("%Y-%m-%d %H:%M")
+
+    def _set_rss_enabled(self, enabled: bool) -> None:
+        self._rss_enabled = enabled
+        if enabled:
+            self._rss_last_value = None
+            self._rss_next_value = None
+        else:
+            self._rss_next_value = None
+        self._apply_rss_status(None, None, paused=False)
+
     def _build_review_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
         self.var_transparency = tk.BooleanVar(value=False)
@@ -1060,6 +1140,8 @@ class App(tk.Tk):
         self.btn_resume.configure(state="disabled")
         self.btn_start.configure(state="normal")
         self.post_scheduler = None
+        self.rss_ingestor = None
+        self._set_rss_enabled(False)
         self._close_run_monitor()
         self.worker = None
 
@@ -1127,6 +1209,26 @@ class App(tk.Tk):
                 self.post_scheduler.start()
             else:
                 self.post_scheduler = None
+
+            feeds = cfg.get("rss_feed_urls", [])
+            if isinstance(feeds, str):
+                feeds = [feeds]
+            rss_interval_minutes = int(cfg.get("rss_fetch_interval_minutes", int(DEFAULT_INTERVAL_SECONDS // 60)))
+            rss_interval_minutes = max(1, rss_interval_minutes)
+            if feeds:
+                self._set_rss_enabled(True)
+                self.rss_ingestor = RSSIngestor(
+                    feeds,
+                    self.news_library,
+                    interval_seconds=float(rss_interval_minutes) * 60.0,
+                    stop_event=self.stop_event,
+                    pause_event=self.pause_event,
+                    status_callback=self._on_rss_status,
+                )
+                self.rss_ingestor.start()
+            else:
+                self._set_rss_enabled(False)
+                self.rss_ingestor = None
             self.btn_pause.configure(state="normal")
             self.btn_resume.configure(state="disabled")
             self.btn_stop.configure(state="normal")
@@ -1145,6 +1247,8 @@ class App(tk.Tk):
         self.btn_pause.configure(state="disabled")
         self.btn_resume.configure(state="disabled")
         self.post_scheduler = None
+        self.rss_ingestor = None
+        self._set_rss_enabled(False)
         self._close_run_monitor()
 
     def pause_clicked(self):
@@ -1211,6 +1315,16 @@ class App(tk.Tk):
             # emergency (disabled here)
             "emergency_early_end_probability": 0.0,
         }
+
+        feeds_raw = self.var_rss_feeds.get().replace("\n", ",")
+        feed_urls = [u.strip() for u in feeds_raw.split(",") if u.strip()]
+        interval_minutes = max(1, int(self.var_rss_interval_minutes.get()))
+        cfg.update(
+            {
+                "rss_feed_urls": feed_urls,
+                "rss_fetch_interval_minutes": interval_minutes,
+            }
+        )
         return cfg
 
     def _collect_sections(self) -> List[Section]:
@@ -1281,6 +1395,22 @@ class App(tk.Tk):
         policy = str(cfg.get("search_open_policy", "once_per_step"))
         ui_policy = {"every_time":"Every time","once_per_step":"Once per step","once_per_section":"Once per section"}.get(policy, "Once per step")
         self.var_open_policy.set(ui_policy)
+
+        feeds_value = cfg.get("rss_feed_urls", [])
+        if isinstance(feeds_value, (list, tuple)):
+            feed_text = ", ".join(str(f).strip() for f in feeds_value if str(f).strip())
+        else:
+            feed_text = str(feeds_value or "")
+        self.var_rss_feeds.set(feed_text)
+
+        default_interval = int(DEFAULT_INTERVAL_SECONDS // 60)
+        try:
+            interval_val = int(cfg.get("rss_fetch_interval_minutes", default_interval))
+        except Exception:
+            interval_val = default_interval
+        if interval_val <= 0:
+            interval_val = default_interval
+        self.var_rss_interval_minutes.set(interval_val)
 
         # sections
         sections_data = data.get("sections", [])
