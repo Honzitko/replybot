@@ -95,6 +95,19 @@ STEP_PAUSE_MAX = 1.8
 # back to the regular pacing used for the remaining presses in the batch.
 FAST_J_INITIAL_DELAY_RANGE = (0.0, 0.05)
 
+# ``Popular`` search results can surface stickied tweets, ads, or other
+# elements that require a deeper initial scroll before reaching fresh posts.
+# When the session opens a Popular search we overshoot the first batch of posts
+# by sending a fixed burst of nine ``j`` presses.
+POPULAR_INITIAL_J_COUNT = 9
+
+POPULAR_SEARCH_MODES: Set[str] = {"popular", "top"}
+LATEST_SEARCH_MODES: Set[str] = {"latest", "nejnovější", "nejnovejsi", "live"}
+
+
+def normalize_search_mode(mode: str) -> str:
+    return str(mode or "").strip().lower()
+
 
 def ensure_connection(url: str, timeout: float) -> float:
     """Check connectivity to ``url`` and return the request time.
@@ -124,13 +137,19 @@ def ensure_connection(url: str, timeout: float) -> float:
 
 def build_search_url(query: str, mode: str) -> str:
     """
-    Popular: https://x.com/search?q=<q>&src=typed_query
+    Popular: https://x.com/search?q=<q>&src=typed_query&f=top
     Latest:  https://x.com/search?q=<q>&src=typed_query&f=live
     """
+
     q = url_quote(query or "")
+    mode_normalized = normalize_search_mode(mode)
     url = f"https://x.com/search?q={q}&src=typed_query"
-    if str(mode).lower() in ("latest", "nejnovější", "nejnovejsi", "live"):
+
+    if mode_normalized in LATEST_SEARCH_MODES:
         url += "&f=live"
+    elif mode_normalized in POPULAR_SEARCH_MODES:
+        url += "&f=top"
+
     return url
 
 # ---- Section model
@@ -433,16 +452,20 @@ class SchedulerWorker(threading.Thread):
         self.activity_scale = self._activity_scale()
 
         # derived
-        self.search_mode = str(self.cfg.get("search_mode", "popular")).lower()
+        self.search_mode = normalize_search_mode(self.cfg.get("search_mode", "popular"))
         self.search_open_policy = str(self.cfg.get("search_open_policy", "once_per_step")).lower()
         # tracking to avoid opening many tabs
         self._opened_sections: Set[str] = set()
         self._opened_this_step: bool = False
         self._browser_opened = False
+        self._popular_initial_scroll_pending = False
 
     def _log(self, level, msg):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
         self.logq.put(f"{ts} [{level}] {msg}")
+
+    def _is_popular_search_mode(self) -> bool:
+        return self.search_mode in POPULAR_SEARCH_MODES
 
     def _activity_scale(self):
         now = datetime.now(CET)
@@ -560,8 +583,10 @@ class SchedulerWorker(threading.Thread):
 
         self._opened_this_step = False
         self._opened_sections.clear()
+        self._popular_initial_scroll_pending = False
 
     def _open_search(self, query: str, section_name: str):
+        self._popular_initial_scroll_pending = False
         url = build_search_url(query, self.search_mode)
         try:
             elapsed = ensure_connection(url, timeout=5)
@@ -596,6 +621,9 @@ class SchedulerWorker(threading.Thread):
         else:
             self._log("INFO", f"Page ready after {waited:.2f}s")
 
+        if self._is_popular_search_mode():
+            self._popular_initial_scroll_pending = True
+
     def _push_to_clipboard(self, text: str):
         if not pyperclip:
             self._log("WARN", "pyperclip not installed; cannot copy to clipboard. pip install pyperclip")
@@ -621,7 +649,11 @@ class SchedulerWorker(threading.Thread):
         self.kb.hotkey(key, "enter")
 
     def _press_j_batch(self, stop_event: Optional[threading.Event] = None) -> bool:
-        presses = random.randint(2, 5)
+        if getattr(self, "_popular_initial_scroll_pending", False):
+            presses = POPULAR_INITIAL_J_COUNT
+            self._popular_initial_scroll_pending = False
+        else:
+            presses = random.randint(2, 5)
         for idx in range(presses):
             if self.stop_event.is_set():
                 return False
@@ -1059,7 +1091,7 @@ class App(tk.Tk):
         cb2.grid(row=0, column=3, sticky="w")
         cb2.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
-        ttk.Label(row3, text="Popular → typed_query; Latest → &f=live. Open policy controls how often a tab is opened.").grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(6,2))
+        ttk.Label(row3, text="Popular → &f=top; Latest → &f=live. Open policy controls how often a tab is opened.").grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(6,2))
 
         # Key binding: allow composing a new post via "N"
         root.bind("N", self._open_post_editor)
