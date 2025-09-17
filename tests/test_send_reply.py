@@ -17,6 +17,7 @@ xtime = x.time
 STEP_PAUSE_MIN = x.STEP_PAUSE_MIN
 STEP_PAUSE_MAX = x.STEP_PAUSE_MAX
 FAST_J_INITIAL_DELAY_RANGE = x.FAST_J_INITIAL_DELAY_RANGE
+POPULAR_INITIAL_J_RANGE = x.POPULAR_INITIAL_J_RANGE
 
 class DummyKB:
     def __init__(self):
@@ -32,7 +33,19 @@ def _make_worker(kb):
     worker._push_to_clipboard = lambda text: None
     worker.stop_event = threading.Event()
     worker.pause_event = threading.Event()
+    worker.search_mode = "popular"
+    worker._popular_initial_scroll_pending = False
     return worker
+
+
+def test_build_search_url_popular():
+    url = x.build_search_url("rocket science", "Popular")
+    assert url == "https://x.com/search?q=rocket%20science&src=typed_query&f=top"
+
+
+def test_build_search_url_latest():
+    url = x.build_search_url("rocket science", "Latest")
+    assert url == "https://x.com/search?q=rocket%20science&src=typed_query&f=live"
 
 
 def test_send_reply_linux(monkeypatch):
@@ -78,7 +91,11 @@ def test_interact_and_reply(monkeypatch):
 def test_press_j_batch(monkeypatch):
     dummy = DummyKB()
     worker = _make_worker(dummy)
-    monkeypatch.setattr(x.random, "randint", lambda a, b: 3)
+    ranges = []
+
+    def fake_randint(a, b):
+        ranges.append((a, b))
+        return 3
 
     delays = iter([0.02, 0.03, 0.9])
     calls = []
@@ -87,6 +104,7 @@ def test_press_j_batch(monkeypatch):
         calls.append((a, b))
         return next(delays)
 
+    monkeypatch.setattr(x.random, "randint", fake_randint)
     monkeypatch.setattr(x.random, "uniform", fake_uniform)
     monkeypatch.setattr(xtime, "sleep", lambda s: None)
 
@@ -96,11 +114,55 @@ def test_press_j_batch(monkeypatch):
         ("press", "j"),
         ("press", "j"),
     ]
+    assert ranges == [(2, 5)]
     assert calls == [
         FAST_J_INITIAL_DELAY_RANGE,
         FAST_J_INITIAL_DELAY_RANGE,
         (STEP_PAUSE_MIN, STEP_PAUSE_MAX),
     ]
+
+
+def test_press_j_batch_popular_initial_scroll(monkeypatch):
+    dummy = DummyKB()
+    worker = _make_worker(dummy)
+    worker._popular_initial_scroll_pending = True
+
+    ranges = []
+
+    def fake_randint(a, b):
+        ranges.append((a, b))
+        if (a, b) == POPULAR_INITIAL_J_RANGE:
+            return 7
+        return 3
+
+    uniform_calls = []
+
+    def fake_uniform(a, b):
+        uniform_calls.append((a, b))
+        if (a, b) == FAST_J_INITIAL_DELAY_RANGE:
+            return 0.01
+        return 0.8
+
+    monkeypatch.setattr(x.random, "randint", fake_randint)
+    monkeypatch.setattr(x.random, "uniform", fake_uniform)
+    monkeypatch.setattr(xtime, "sleep", lambda s: None)
+
+    assert worker._press_j_batch() is True
+    assert dummy.calls == [("press", "j")] * 7
+    assert ranges == [POPULAR_INITIAL_J_RANGE]
+
+    first_call_uniforms = uniform_calls.copy()
+    assert first_call_uniforms[:2] == [FAST_J_INITIAL_DELAY_RANGE, FAST_J_INITIAL_DELAY_RANGE]
+    assert all(r == (STEP_PAUSE_MIN, STEP_PAUSE_MAX) for r in first_call_uniforms[2:])
+    assert worker._popular_initial_scroll_pending is False
+
+    dummy.calls.clear()
+    ranges.clear()
+    uniform_calls.clear()
+
+    assert worker._press_j_batch() is True
+    assert dummy.calls == [("press", "j")] * 3
+    assert ranges == [(2, 5)]
 
 
 def test_reset_step_open_state_clears_sections_once_per_section():
