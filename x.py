@@ -140,6 +140,7 @@ class Section:
     max_responses_before_switch: Tuple[int, int] = (4, 8)
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
+    enabled: bool = True
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
     def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
     def pick_query(self) -> Optional[str]: return random.choice(self.search_queries) if self.search_queries else None
@@ -147,26 +148,155 @@ class Section:
 
 # ---- Defaults (edit in UI later)
 DEFAULT_SECTIONS_SEED = [
-    ("Sharp & Direct",(220,240),(6,12),["morning performance","industry trends","team updates"],
-     ["Strong start to the day. Let’s build.","Morning momentum sets the tone.","Focused and ready to execute."]),
-    ("Professional & Brief",(220,240),(5,9),["client progress","feature rollouts"],
-     ["Starting strong and staying consistent.","Vision only matters with execution.","Early action sets the pace."]),
-    ("Builder Mindset",(220,240),(5,10),["roadmap items","dev insights"],
-     ["Every task is a brick in the wall.","Opportunities don’t knock, they’re built.","Build momentum early."]),
-    ("Networking & Collab",(220,240),(4,8),["partner announcements","collab opportunities"],
-     ["Open to smart partnerships—let’s align.","If you’re building, let’s connect.","Partnerships create possibilities."]),
-    ("Motivation Lite",(220,240),(5,9),["team shoutouts"],
-     ["Make it count today.","Results over opinions.","Keep stacking small wins."]),
-    ("Execution Mode",(220,240),(6,12),["status check","backlog review"],
-     ["The plan is simple: execute.","Decide, then execute.","Clarity creates confidence."]),
-    ("Weekend Chill (still pro)",(220,260),(3,6),["light topics","community notes"],
-     ["Fresh start, same fire.","Stay in motion.","Good energy, good outcomes."]),
-    ("Insightful & Calm",(220,260),(4,8),["market notes","customer wins"],
-     ["Focus on what compounds.","Daily effort writes the future.","Direction beats speed."]),
-    ("Fast & To the Point",(220,240),(7,13),["quick scans"],
-     ["Keep it moving.","Outperform yesterday.","Push the line forward."]),
-    ("Creator/Brand Voice",(220,240),(5,10),["brand mentions","community threads"],
-     ["Let’s turn ideas into outcomes.","Consistency is the advantage.","Show up, level up."]),
+    {
+        "name": "Sharp & Direct",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (6, 12),
+        "search_queries": [
+            "morning performance",
+            "industry trends",
+            "team updates",
+        ],
+        "responses": [
+            "Strong start to the day. Let’s build.",
+            "Morning momentum sets the tone.",
+            "Focused and ready to execute.",
+        ],
+    },
+    {
+        "name": "Professional & Brief",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (5, 9),
+        "search_queries": [
+            "client progress",
+            "feature rollouts",
+        ],
+        "responses": [
+            "Starting strong and staying consistent.",
+            "Vision only matters with execution.",
+            "Early action sets the pace.",
+        ],
+    },
+    {
+        "name": "Builder Mindset",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (5, 10),
+        "search_queries": [
+            "roadmap items",
+            "dev insights",
+        ],
+        "responses": [
+            "Every task is a brick in the wall.",
+            "Opportunities don’t knock, they’re built.",
+            "Build momentum early.",
+        ],
+    },
+    {
+        "name": "Networking & Collab",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (4, 8),
+        "search_queries": [
+            "partner announcements",
+            "collab opportunities",
+        ],
+        "responses": [
+            "Open to smart partnerships—let’s align.",
+            "If you’re building, let’s connect.",
+            "Partnerships create possibilities.",
+        ],
+    },
+    {
+        "name": "Motivation Lite",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (5, 9),
+        "search_queries": [
+            "team shoutouts",
+        ],
+        "responses": [
+            "Make it count today.",
+            "Results over opinions.",
+            "Keep stacking small wins.",
+        ],
+    },
+    {
+        "name": "Execution Mode",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (6, 12),
+        "search_queries": [
+            "status check",
+            "backlog review",
+        ],
+        "responses": [
+            "The plan is simple: execute.",
+            "Decide, then execute.",
+            "Clarity creates confidence.",
+        ],
+    },
+    {
+        "name": "Weekend Chill (still pro)",
+        "enabled": True,
+        "typing_ms_per_char": (220, 260),
+        "max_responses_before_switch": (3, 6),
+        "search_queries": [
+            "light topics",
+            "community notes",
+        ],
+        "responses": [
+            "Fresh start, same fire.",
+            "Stay in motion.",
+            "Good energy, good outcomes.",
+        ],
+    },
+    {
+        "name": "Insightful & Calm",
+        "enabled": True,
+        "typing_ms_per_char": (220, 260),
+        "max_responses_before_switch": (4, 8),
+        "search_queries": [
+            "market notes",
+            "customer wins",
+        ],
+        "responses": [
+            "Focus on what compounds.",
+            "Daily effort writes the future.",
+            "Direction beats speed.",
+        ],
+    },
+    {
+        "name": "Fast & To the Point",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (7, 13),
+        "search_queries": [
+            "quick scans",
+        ],
+        "responses": [
+            "Keep it moving.",
+            "Outperform yesterday.",
+            "Push the line forward.",
+        ],
+    },
+    {
+        "name": "Creator/Brand Voice",
+        "enabled": True,
+        "typing_ms_per_char": (220, 240),
+        "max_responses_before_switch": (5, 10),
+        "search_queries": [
+            "brand mentions",
+            "community threads",
+        ],
+        "responses": [
+            "Let’s turn ideas into outcomes.",
+            "Consistency is the advantage.",
+            "Show up, level up.",
+        ],
+    },
 ]
 
 # ---- Post scheduling
@@ -1029,23 +1159,49 @@ class App(tk.Tk):
         self.sections_vars = []
         nb = ttk.Notebook(root); nb.pack(fill="both", expand=True, padx=6, pady=6)
 
-        for (name, typ_rng, max_resp, queries, responses) in DEFAULT_SECTIONS_SEED:
-            tab = ttk.Frame(nb)
-            nb.add(tab, text=name[:16] + ("…" if len(name) > 16 else ""))
+        for seed in DEFAULT_SECTIONS_SEED:
+            default_name = str(seed.get("name", "Section"))
+            typ_rng = seed.get("typing_ms_per_char", (220, 240))
+            max_resp = seed.get("max_responses_before_switch", (4, 8))
+            queries = list(seed.get("search_queries", []))
+            responses = list(seed.get("responses", []))
+            enabled_default = bool(seed.get("enabled", True))
 
-            v_typ_min = tk.IntVar(value=typ_rng[0]); v_typ_max = tk.IntVar(value=typ_rng[1])
-            v_resp_min = tk.IntVar(value=max_resp[0]); v_resp_max = tk.IntVar(value=max_resp[1])
+            tab = ttk.Frame(nb)
+            nb.add(tab, text=self._section_tab_title(default_name))
+
+            v_typ_min = tk.IntVar(value=int(typ_rng[0])); v_typ_max = tk.IntVar(value=int(typ_rng[1]))
+            v_resp_min = tk.IntVar(value=int(max_resp[0])); v_resp_max = tk.IntVar(value=int(max_resp[1]))
+            name_var = tk.StringVar(value=default_name)
+            enabled_var = tk.BooleanVar(value=enabled_default)
 
             col = ttk.Frame(tab); col.pack(fill="both", expand=True, padx=10, pady=10)
-            self._pair(col, f"{name} typing ms/char (min/max)", v_typ_min, v_typ_max)
-            self._pair(col, f"{name} max responses before switch (min/max)", v_resp_min, v_resp_max)
 
-            ttk.Label(col, text=f"{name} — Search queries (one per line):").pack(anchor="w", pady=(8,2))
+            header = ttk.Frame(col); header.pack(fill="x", pady=(0, 8))
+            header.columnconfigure(1, weight=1)
+            ttk.Label(header, text="Section name:").grid(row=0, column=0, sticky="w")
+            entry_name = ttk.Entry(header, textvariable=name_var)
+            entry_name.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+            entry_name.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+            ttk.Checkbutton(header, text="Enabled", variable=enabled_var, command=self._mark_dirty).grid(
+                row=0, column=2, sticky="w", padx=(12, 0)
+            )
+
+            def update_tab_label(*_):
+                nb.tab(tab, text=self._section_tab_title(name_var.get(), fallback=default_name))
+
+            update_tab_label()
+            name_var.trace_add("write", update_tab_label)
+
+            self._pair(col, "Typing ms/char (min/max)", v_typ_min, v_typ_max)
+            self._pair(col, "Max responses before switch (min/max)", v_resp_min, v_resp_max)
+
+            ttk.Label(col, text="Search queries (one per line):").pack(anchor="w", pady=(8, 2))
             txt_q = scrolledtext.ScrolledText(col, height=6)
             txt_q.insert("1.0", "\n".join(queries))
             txt_q.pack(fill="both", expand=False)
 
-            ttk.Label(col, text=f"{name} — Responses (one per line):").pack(anchor="w", pady=(8,2))
+            ttk.Label(col, text="Responses (one per line):").pack(anchor="w", pady=(8, 2))
             txt_r = scrolledtext.ScrolledText(col, height=8)
             txt_r.insert("1.0", "\n".join(responses))
             txt_r.pack(fill="both", expand=True)
@@ -1054,9 +1210,16 @@ class App(tk.Tk):
             txt_r.bind("<<Modified>>", self._on_text_modified)
 
             self.sections_vars.append({
-                "name": name, "typ_min": v_typ_min, "typ_max": v_typ_max,
-                "resp_min": v_resp_min, "resp_max": v_resp_max,
-                "txt_queries": txt_q, "txt_responses": txt_r
+                "default_name": default_name,
+                "default_enabled": enabled_default,
+                "name_var": name_var,
+                "enabled_var": enabled_var,
+                "typ_min": v_typ_min,
+                "typ_max": v_typ_max,
+                "resp_min": v_resp_min,
+                "resp_max": v_resp_max,
+                "txt_queries": txt_q,
+                "txt_responses": txt_r,
             })
         self._bind_dirty(nb)
 
@@ -1373,6 +1536,14 @@ class App(tk.Tk):
         e1.bind("<KeyRelease>", lambda *_: self._mark_dirty())
         e2.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
+    def _section_tab_title(self, value: str, fallback: Optional[str] = None) -> str:
+        text = str(value or "").strip()
+        if not text and fallback:
+            text = str(fallback)
+        if not text:
+            text = "Section"
+        return text[:16] + ("…" if len(text) > 16 else "")
+
     def _bind_dirty(self, container):
         for child in container.winfo_children():
             if isinstance(child, ttk.Entry) or isinstance(child, ttk.Combobox):
@@ -1561,16 +1732,24 @@ class App(tk.Tk):
     def _collect_sections(self) -> List[Section]:
         out: List[Section] = []
         for sv in self.sections_vars:
-            name = sv["name"]
+            enabled = bool(sv["enabled_var"].get())
+            if not enabled:
+                continue
+            default_name = sv.get("default_name", "Section")
+            raw_name = str(sv["name_var"].get()).strip()
+            name = raw_name or default_name
             tmin = int(sv["typ_min"].get()); tmax = int(sv["typ_max"].get())
             rmin = int(sv["resp_min"].get()); rmax = int(sv["resp_max"].get())
-            q_lines = [ln.strip() for ln in sv["txt_queries"].get("1.0","end").splitlines() if ln.strip()]
-            r_lines = [ln.strip() for ln in sv["txt_responses"].get("1.0","end").splitlines() if ln.strip()]
-            out.append(Section(name=name,
-                               typing_ms_per_char=(tmin,tmax),
-                               max_responses_before_switch=(rmin,rmax),
-                               search_queries=q_lines,
-                               responses=r_lines))
+            q_lines = [ln.strip() for ln in sv["txt_queries"].get("1.0", "end").splitlines() if ln.strip()]
+            r_lines = [ln.strip() for ln in sv["txt_responses"].get("1.0", "end").splitlines() if ln.strip()]
+            out.append(Section(
+                name=name,
+                typing_ms_per_char=(tmin, tmax),
+                max_responses_before_switch=(rmin, rmax),
+                search_queries=q_lines,
+                responses=r_lines,
+                enabled=enabled,
+            ))
         return out
 
     def _config_to_dict(self) -> Dict:
@@ -1578,12 +1757,23 @@ class App(tk.Tk):
                 "sections": [self._section_to_dict(sv) for sv in self.sections_vars]}
 
     def _section_to_dict(self, sv: Dict) -> Dict:
+        default_name = sv.get("default_name", "Section")
+        name = str(sv["name_var"].get()).strip() or default_name
         return {
-            "name": sv["name"],
+            "name": name,
+            "enabled": bool(sv["enabled_var"].get()),
             "typing_ms_per_char": (int(sv["typ_min"].get()), int(sv["typ_max"].get())),
             "max_responses_before_switch": (int(sv["resp_min"].get()), int(sv["resp_max"].get())),
-            "search_queries": [ln.strip() for ln in sv["txt_queries"].get("1.0","end").splitlines() if ln.strip()],
-            "responses": [ln.strip() for ln in sv["txt_responses"].get("1.0","end").splitlines() if ln.strip()],
+            "search_queries": [
+                ln.strip()
+                for ln in sv["txt_queries"].get("1.0", "end").splitlines()
+                if ln.strip()
+            ],
+            "responses": [
+                ln.strip()
+                for ln in sv["txt_responses"].get("1.0", "end").splitlines()
+                if ln.strip()
+            ],
         }
 
     def _apply_profile_dict(self, data: Dict):
@@ -1657,17 +1847,55 @@ class App(tk.Tk):
 
         # sections
         sections_data = data.get("sections", [])
-        name_to_vars = {sv["name"]: sv for sv in self.sections_vars}
-        for s in sections_data:
-            nm = s.get("name")
-            if nm and nm in name_to_vars:
-                sv = name_to_vars[nm]
-                tpair = s.get("typing_ms_per_char", (220, 240))
-                rpair = s.get("max_responses_before_switch", (4, 8))
+        for idx, sv in enumerate(self.sections_vars):
+            section_cfg = sections_data[idx] if idx < len(sections_data) else {}
+            if not isinstance(section_cfg, dict):
+                section_cfg = {}
+
+            default_name = sv.get("default_name", "Section")
+            default_enabled = bool(sv.get("default_enabled", True))
+
+            name_value = str(section_cfg.get("name") or "").strip()
+            sv["name_var"].set(name_value or default_name)
+
+            enabled_value = section_cfg.get("enabled")
+            if enabled_value is None:
+                enabled_value = default_enabled
+            sv["enabled_var"].set(bool(enabled_value))
+
+            tpair = section_cfg.get("typing_ms_per_char")
+            if isinstance(tpair, (list, tuple)) and len(tpair) == 2:
                 sv["typ_min"].set(int(tpair[0])); sv["typ_max"].set(int(tpair[1]))
+
+            rpair = section_cfg.get("max_responses_before_switch")
+            if isinstance(rpair, (list, tuple)) and len(rpair) == 2:
                 sv["resp_min"].set(int(rpair[0])); sv["resp_max"].set(int(rpair[1]))
-                sv["txt_queries"].delete("1.0","end"); sv["txt_queries"].insert("1.0", "\n".join(s.get("search_queries", [])))
-                sv["txt_responses"].delete("1.0","end"); sv["txt_responses"].insert("1.0", "\n".join(s.get("responses", [])))
+
+            queries_value = section_cfg.get("search_queries", None)
+            if isinstance(queries_value, str):
+                q_lines = [ln.strip() for ln in queries_value.splitlines() if ln.strip()]
+            elif isinstance(queries_value, (list, tuple)):
+                q_lines = [str(ln).strip() for ln in queries_value if str(ln).strip()]
+            else:
+                q_lines = None
+            if q_lines is not None:
+                sv["txt_queries"].delete("1.0", "end")
+                if q_lines:
+                    sv["txt_queries"].insert("1.0", "\n".join(q_lines))
+                sv["txt_queries"].edit_modified(False)
+
+            responses_value = section_cfg.get("responses", None)
+            if isinstance(responses_value, str):
+                r_lines = [ln.strip() for ln in responses_value.splitlines() if ln.strip()]
+            elif isinstance(responses_value, (list, tuple)):
+                r_lines = [str(ln).strip() for ln in responses_value if str(ln).strip()]
+            else:
+                r_lines = None
+            if r_lines is not None:
+                sv["txt_responses"].delete("1.0", "end")
+                if r_lines:
+                    sv["txt_responses"].insert("1.0", "\n".join(r_lines))
+                sv["txt_responses"].edit_modified(False)
 
         self.dirty = False
         self.lbl_dirty.configure(text="")
