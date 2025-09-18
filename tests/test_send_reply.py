@@ -50,6 +50,14 @@ def test_build_search_url_latest():
     assert url == "https://x.com/search?q=rocket%20science&src=typed_query&f=live"
 
 
+def test_section_pick_query_cycles_sequentially():
+    section = x.Section(name="Test", search_queries=["q1", "q2", "q3"])
+
+    picks = [section.pick_query() for _ in range(5)]
+
+    assert picks == ["q1", "q2", "q3", "q1", "q2"]
+
+
 def test_send_reply_linux(monkeypatch):
     dummy = DummyKB()
     worker = _make_worker(dummy)
