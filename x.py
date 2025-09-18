@@ -163,9 +163,16 @@ class Section:
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
     enabled: bool = True
+    _query_cycle_index: int = field(default=0, init=False, repr=False)
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
     def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
-    def pick_query(self) -> Optional[str]: return random.choice(self.search_queries) if self.search_queries else None
+    def pick_query(self) -> Optional[str]:
+        if not self.search_queries:
+            return None
+        idx = self._query_cycle_index % len(self.search_queries)
+        query = self.search_queries[idx]
+        self._query_cycle_index = (idx + 1) % len(self.search_queries)
+        return query
     def pick_response(self) -> Optional[str]: return random.choice(self.responses) if self.responses else None
 
 # ---- Defaults (edit in UI later)
