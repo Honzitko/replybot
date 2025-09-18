@@ -1236,8 +1236,17 @@ class App(tk.Tk):
                 row=0, column=2, sticky="w", padx=(12, 0)
             )
 
-            def update_tab_label(*_):
-                nb.tab(tab, text=self._section_tab_title(name_var.get(), fallback=default_name))
+            def update_tab_label(
+                *_,
+                notebook=nb,
+                current_tab=tab,
+                var=name_var,
+                default=default_name,
+            ):
+                notebook.tab(
+                    current_tab,
+                    text=self._section_tab_title(var.get(), fallback=default),
+                )
 
             update_tab_label()
             name_var.trace_add("write", update_tab_label)
