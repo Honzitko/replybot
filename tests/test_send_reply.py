@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import sys
 import threading
+import queue
 import time
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -37,6 +38,34 @@ def _make_worker(kb):
     worker.pause_event = threading.Event()
     worker._popular_initial_scroll_pending = False
     return worker
+
+
+def _minimal_cfg():
+    return {
+        "session_hours_range": (1.0, 1.0),
+        "session_step_minutes_range": (1, 1),
+        "session_break_minutes_range": (1, 1),
+        "night_sleep_start_hour_range": (23, 23),
+        "night_sleep_start_minute_jitter": (0, 0),
+        "night_sleep_hours_range": (7.0, 7.0),
+        "micro_pause_every_n_actions_range": (1, 1),
+        "micro_pause_seconds_range": (0.1, 0.1),
+        "weekday_activity_scale": 1.0,
+        "weekend_activity_scale": 1.0,
+        "daily_interaction_cap_range": (1, 1),
+        "hourly_interaction_cap_range": (1, 1),
+        "min_seconds_between_actions_range": (0.1, 0.1),
+        "extra_jitter_probability": 0.0,
+        "extra_jitter_seconds_range": (0.1, 0.1),
+        "whitelist_keywords": [],
+        "blacklist_keywords": [],
+        "profanity_list": [],
+        "content_similarity_threshold": 1.0,
+        "uniqueness_memory_size": 5,
+        "targets_per_step_range": (1, 1),
+        "search_mode": "popular",
+        "search_open_policy": "once_per_step",
+    }
 
 
 def test_build_search_url_popular():
@@ -199,3 +228,23 @@ def test_reset_step_open_state_clears_sections_once_per_section():
     assert worker._opened_sections == set()
     assert worker._opened_this_step is False
     assert worker._should_open_search_now("alpha") is True
+
+
+def test_scheduler_worker_respects_section_order():
+    cfg = _minimal_cfg()
+    sections = [
+        x.Section(name="Later", search_queries=["c"], responses=["c"], order=2),
+        x.Section(name="First", search_queries=["a"], responses=["a"], order=0),
+        x.Section(name="Middle", search_queries=["b"], responses=["b"], order=1),
+    ]
+    worker = SchedulerWorker(
+        cfg,
+        sections,
+        queue.Queue(),
+        threading.Event(),
+        threading.Event(),
+        DummyKB(),
+    )
+
+    assert [section.name for section in worker.sections] == ["First", "Middle", "Later"]
+    assert [section.order for section in worker.sections] == [0, 1, 2]
