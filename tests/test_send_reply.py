@@ -35,7 +35,6 @@ def _make_worker(kb):
     worker._push_to_clipboard = lambda text: None
     worker.stop_event = threading.Event()
     worker.pause_event = threading.Event()
-    worker.search_mode = "popular"
     worker._popular_initial_scroll_pending = False
     return worker
 

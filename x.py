@@ -162,6 +162,7 @@ class Section:
     max_responses_before_switch: Tuple[int, int] = (4, 8)
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
+    search_mode: str = "popular"
     enabled: bool = True
     _query_cycle_index: int = field(default=0, init=False, repr=False)
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
@@ -461,8 +462,15 @@ class SchedulerWorker(threading.Thread):
         self.activity_scale = self._activity_scale()
 
         # derived
-        self.search_mode = normalize_search_mode(self.cfg.get("search_mode", "popular"))
         self.search_open_policy = str(self.cfg.get("search_open_policy", "once_per_step")).lower()
+        for section in self.sections:
+            normalized = normalize_search_mode(getattr(section, "search_mode", "popular"))
+            if normalized in LATEST_SEARCH_MODES:
+                section.search_mode = "latest"
+            elif normalized in POPULAR_SEARCH_MODES:
+                section.search_mode = "popular"
+            else:
+                section.search_mode = "popular"
         # tracking to avoid opening many tabs
         self._opened_sections: Set[str] = set()
         self._opened_this_step: bool = False
@@ -473,8 +481,8 @@ class SchedulerWorker(threading.Thread):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
         self.logq.put(f"{ts} [{level}] {msg}")
 
-    def _is_popular_search_mode(self) -> bool:
-        return self.search_mode in POPULAR_SEARCH_MODES
+    def _is_popular_search_mode(self, mode: str) -> bool:
+        return normalize_search_mode(mode) in POPULAR_SEARCH_MODES
 
     def _activity_scale(self):
         now = datetime.now(CET)
@@ -594,16 +602,27 @@ class SchedulerWorker(threading.Thread):
         self._opened_sections.clear()
         self._popular_initial_scroll_pending = False
 
-    def _open_search(self, query: str, section_name: str):
+    def _open_search(self, query: str, section: Section):
         self._popular_initial_scroll_pending = False
-        url = build_search_url(query, self.search_mode)
+        section_name = getattr(section, "name", "section")
+        raw_mode = getattr(section, "search_mode", "popular")
+        mode_norm = normalize_search_mode(raw_mode)
+        if mode_norm in LATEST_SEARCH_MODES:
+            effective_mode = "latest"
+        elif mode_norm in POPULAR_SEARCH_MODES:
+            effective_mode = "popular"
+        else:
+            effective_mode = "popular"
+        section.search_mode = effective_mode
+        url = build_search_url(query, effective_mode)
         try:
             elapsed = ensure_connection(url, timeout=5)
             self._log("INFO", f"Connection verified in {elapsed:.2f}s")
         except Exception as e:
             self._log("ERROR", f"Connection check failed: {e}")
             return
-        self._log("INFO", f"Open search: {url}")
+        mode_label = "Latest" if effective_mode == "latest" else "Popular"
+        self._log("INFO", f"Open search for {section_name} [{mode_label}]: {url}")
         try:
             if not self._browser_opened:
                 import webbrowser
@@ -630,7 +649,7 @@ class SchedulerWorker(threading.Thread):
         else:
             self._log("INFO", f"Page ready after {waited:.2f}s")
 
-        if self._is_popular_search_mode():
+        if self._is_popular_search_mode(effective_mode):
             self._popular_initial_scroll_pending = True
 
     def _push_to_clipboard(self, text: str):
@@ -692,7 +711,13 @@ class SchedulerWorker(threading.Thread):
     def run(self):
         self._log("INFO", f"Session start {self.session_start} | ends by {self.session_end}")
         self._log("INFO", f"Night sleep: {self.night_sleep_start} → {self.night_sleep_end}")
-        self._log("INFO", f"Daily cap={self.daily_cap} | Hourly cap={self.hourly_cap} | Search mode={self.search_mode} | Open policy={self.search_open_policy}")
+        self._log("INFO", f"Daily cap={self.daily_cap} | Hourly cap={self.hourly_cap} | Open policy={self.search_open_policy}")
+        modes_summary = ", ".join(
+            f"{section.name}→{'Latest' if section.search_mode == 'latest' else 'Popular'}"
+            for section in self.sections
+        )
+        if modes_summary:
+            self._log("INFO", f"Section search modes: {modes_summary}")
         try:
             while datetime.now(CET) < self.session_end and not self.stop_event.is_set():
                 self._wait_if_paused()
@@ -724,11 +749,12 @@ class SchedulerWorker(threading.Thread):
                     self._wait_if_paused()
                     max_responses = max(1, section.pick_max_responses())
                     remaining_attempts = max_responses
-                    self._log("INFO", f"Section → {section.name} (limit {max_responses})")
+                    mode_label = "Latest" if section.search_mode == "latest" else "Popular"
+                    self._log("INFO", f"Section → {section.name} [{mode_label}] (limit {max_responses})")
 
                     current_query = section.pick_query() or "general discovery"
                     if self._should_open_search_now(section.name):
-                        self._open_search(current_query, section.name)
+                        self._open_search(current_query, section)
                         self._mark_opened(section.name)
 
                     while remaining_attempts > 0:
@@ -1084,25 +1110,21 @@ class App(tk.Tk):
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 8)
         )
 
-        # Search mode + open policy
+        # Search open policy (search filter now per section)
         row3 = ttk.LabelFrame(f, text="Search")
         row3.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(12,0))
 
-        self.var_search_mode = tk.StringVar(value="Popular")
-        ttk.Label(row3, text="Search filter:").grid(row=0, column=0, sticky="w", padx=8)
-        cb = ttk.Combobox(row3, textvariable=self.var_search_mode, state="readonly",
-                          values=["Popular","Latest"], width=12)
-        cb.grid(row=0, column=1, sticky="w", padx=6)
-        cb.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
-
         self.var_open_policy = tk.StringVar(value="Once per step")
-        ttk.Label(row3, text="Open policy:").grid(row=0, column=2, sticky="e", padx=8)
+        ttk.Label(row3, text="Open policy:").grid(row=0, column=0, sticky="w", padx=8)
         cb2 = ttk.Combobox(row3, textvariable=self.var_open_policy, state="readonly",
                            values=["Every time","Once per step","Once per section"], width=18)
-        cb2.grid(row=0, column=3, sticky="w")
+        cb2.grid(row=0, column=1, sticky="w", padx=(6,0))
         cb2.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
-        ttk.Label(row3, text="Popular → &f=top; Latest → &f=live. Open policy controls how often a tab is opened.").grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(6,2))
+        ttk.Label(row3, text=(
+            "Popular → &f=top; Latest → &f=live. Choose the search filter for each section in its tab. "
+            "Open policy controls how often a tab is opened."
+        )).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=(6,2))
 
         # Key binding: allow composing a new post via "N"
         root.bind("N", self._open_post_editor)
@@ -1223,6 +1245,12 @@ class App(tk.Tk):
             v_resp_min = tk.IntVar(value=int(max_resp[0])); v_resp_max = tk.IntVar(value=int(max_resp[1]))
             name_var = tk.StringVar(value=default_name)
             enabled_var = tk.BooleanVar(value=enabled_default)
+            mode_seed = normalize_search_mode(seed.get("search_mode", "popular"))
+            if mode_seed in LATEST_SEARCH_MODES:
+                default_mode_ui = "Latest"
+            else:
+                default_mode_ui = "Popular"
+            mode_var = tk.StringVar(value=default_mode_ui)
 
             col = ttk.Frame(tab); col.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -1235,6 +1263,16 @@ class App(tk.Tk):
             ttk.Checkbutton(header, text="Enabled", variable=enabled_var, command=self._mark_dirty).grid(
                 row=0, column=2, sticky="w", padx=(12, 0)
             )
+            ttk.Label(header, text="Search filter:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+            mode_cb = ttk.Combobox(
+                header,
+                textvariable=mode_var,
+                state="readonly",
+                values=["Popular", "Latest"],
+                width=12,
+            )
+            mode_cb.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+            mode_cb.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
             def update_tab_label(
                 *_,
@@ -1270,8 +1308,10 @@ class App(tk.Tk):
             self.sections_vars.append({
                 "default_name": default_name,
                 "default_enabled": enabled_default,
+                "default_mode": default_mode_ui,
                 "name_var": name_var,
                 "enabled_var": enabled_var,
+                "mode_var": mode_var,
                 "typ_min": v_typ_min,
                 "typ_max": v_typ_max,
                 "resp_min": v_resp_min,
@@ -1931,7 +1971,6 @@ class App(tk.Tk):
             "transparency_tag_enabled": bool(getattr(self, "var_transparency", tk.BooleanVar(value=False)).get()),
             "transparency_tag_text": getattr(self, "var_transparency_text", tk.StringVar(value="— managed account")).get(),
             # search
-            "search_mode": self.var_search_mode.get().strip().lower(),
             "search_open_policy": policy_map.get(self.var_open_policy.get().strip(), "once_per_step"),
             # pacing only
             "targets_per_step_range": (8, 14),
@@ -1980,6 +2019,15 @@ class App(tk.Tk):
             name = raw_name or default_name
             tmin = int(sv["typ_min"].get()); tmax = int(sv["typ_max"].get())
             rmin = int(sv["resp_min"].get()); rmax = int(sv["resp_max"].get())
+            mode_var = sv.get("mode_var")
+            mode_raw = mode_var.get() if mode_var is not None else "popular"
+            mode_norm = normalize_search_mode(mode_raw)
+            if mode_norm in LATEST_SEARCH_MODES:
+                mode_value = "latest"
+            elif mode_norm in POPULAR_SEARCH_MODES:
+                mode_value = "popular"
+            else:
+                mode_value = "popular"
             q_lines = [ln.strip() for ln in sv["txt_queries"].get("1.0", "end").splitlines() if ln.strip()]
             r_lines = [ln.strip() for ln in sv["txt_responses"].get("1.0", "end").splitlines() if ln.strip()]
             out.append(Section(
@@ -1988,6 +2036,7 @@ class App(tk.Tk):
                 max_responses_before_switch=(rmin, rmax),
                 search_queries=q_lines,
                 responses=r_lines,
+                search_mode=mode_value,
                 enabled=enabled,
             ))
         return out
@@ -1999,9 +2048,22 @@ class App(tk.Tk):
     def _section_to_dict(self, sv: Dict) -> Dict:
         default_name = sv.get("default_name", "Section")
         name = str(sv["name_var"].get()).strip() or default_name
+        default_mode_ui = sv.get("default_mode", "Popular")
+        fallback_norm = normalize_search_mode(default_mode_ui)
+        fallback_mode = "latest" if fallback_norm in LATEST_SEARCH_MODES else "popular"
+        mode_var = sv.get("mode_var")
+        mode_raw = mode_var.get() if mode_var is not None else default_mode_ui
+        mode_norm = normalize_search_mode(mode_raw)
+        if mode_norm in LATEST_SEARCH_MODES:
+            mode_value = "latest"
+        elif mode_norm in POPULAR_SEARCH_MODES:
+            mode_value = "popular"
+        else:
+            mode_value = fallback_mode
         return {
             "name": name,
             "enabled": bool(sv["enabled_var"].get()),
+            "search_mode": mode_value,
             "typing_ms_per_char": (int(sv["typ_min"].get()), int(sv["typ_max"].get())),
             "max_responses_before_switch": (int(sv["resp_min"].get()), int(sv["resp_max"].get())),
             "search_queries": [
@@ -2049,9 +2111,6 @@ class App(tk.Tk):
 
         self.var_similarity.set(cfg.get("content_similarity_threshold", 0.90))
         self.var_unique_mem.set(cfg.get("uniqueness_memory_size", 200))
-
-        mode = str(cfg.get("search_mode", "popular")).capitalize()
-        self.var_search_mode.set(mode if mode in ("Popular","Latest") else "Popular")
 
         policy = str(cfg.get("search_open_policy", "once_per_step"))
         ui_policy = {"every_time":"Every time","once_per_step":"Once per step","once_per_section":"Once per section"}.get(policy, "Once per step")
@@ -2102,6 +2161,22 @@ class App(tk.Tk):
             if enabled_value is None:
                 enabled_value = default_enabled
             sv["enabled_var"].set(bool(enabled_value))
+
+            default_mode_ui = sv.get("default_mode", "Popular")
+            mode_value = section_cfg.get("search_mode", None)
+            if mode_value is None:
+                ui_mode = default_mode_ui
+            else:
+                mode_norm = normalize_search_mode(mode_value)
+                if mode_norm in LATEST_SEARCH_MODES:
+                    ui_mode = "Latest"
+                elif mode_norm in POPULAR_SEARCH_MODES:
+                    ui_mode = "Popular"
+                else:
+                    ui_mode = default_mode_ui
+            mode_var = sv.get("mode_var")
+            if mode_var is not None:
+                mode_var.set(ui_mode)
 
             tpair = section_cfg.get("typing_ms_per_char")
             if isinstance(tpair, (list, tuple)) and len(tpair) == 2:
