@@ -670,13 +670,49 @@ class SchedulerWorker(threading.Thread):
         except Exception as e:
             self._log("ERROR", f"Clipboard copy failed: {e}")
 
-    def _send_reply(self, text: str):
+    def _typing_delay_seconds(self, section: Optional[Section]) -> float:
+        """Return the per-character typing delay for ``section`` in seconds."""
+
+        fallback_seconds = 0.2
+        if section is None:
+            return fallback_seconds
+        section_name = getattr(section, "name", "?")
+        try:
+            delay_ms = section.pick_typing_speed()
+        except Exception as exc:
+            self._log(
+                "WARN",
+                f"Could not determine typing delay for {section_name}: {exc}; using {fallback_seconds:.2f}s delay.",
+            )
+            return fallback_seconds
+
+        try:
+            delay_seconds = float(delay_ms) / 1000.0
+        except (TypeError, ValueError):
+            self._log(
+                "WARN",
+                f"Invalid typing delay {delay_ms!r} for {section_name}; using {fallback_seconds:.2f}s delay.",
+            )
+            return fallback_seconds
+
+        if delay_seconds <= 0:
+            self._log(
+                "WARN",
+                f"Non-positive typing delay {delay_seconds}s for {section_name}; using {fallback_seconds:.2f}s delay.",
+            )
+            return fallback_seconds
+
+        return delay_seconds
+
+    def _send_reply(self, text: str, section: Optional[Section] = None):
         """Simulate typing ``text`` and submit the reply."""
+
+        delay = self._typing_delay_seconds(section)
 
         # Type the reply one character at a time to imitate natural typing.
         for ch in text:
             self.kb.press(ch)
-            time.sleep(0.05)
+            time.sleep(delay)
 
         # Small pause before sending the reply.
         time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
@@ -708,13 +744,13 @@ class SchedulerWorker(threading.Thread):
                 time.sleep(delay)
         return True
 
-    def _interact_and_reply(self, text: str):
+    def _interact_and_reply(self, text: str, section: Optional[Section] = None):
         time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         self.kb.press("l")
         time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
         self.kb.press("r")
         time.sleep(random.uniform(STEP_PAUSE_MIN, STEP_PAUSE_MAX))
-        self._send_reply(text)
+        self._send_reply(text, section=section)
 
     def run(self):
         self._log("INFO", f"Session start {self.session_start} | ends by {self.session_end}")
@@ -790,7 +826,7 @@ class SchedulerWorker(threading.Thread):
                             reply_text = f"{reply_text} {self.cfg.get('transparency_tag_text','— managed account')}"
 
                         self._log("INFO", f"Replying → {reply_text!r}")
-                        self._interact_and_reply(reply_text)
+                        self._interact_and_reply(reply_text, section=section)
 
                         self._cooldown()
 
