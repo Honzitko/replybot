@@ -160,6 +160,7 @@ class Section:
     name: str
     typing_ms_per_char: Tuple[int, int] = (220, 240)
     max_responses_before_switch: Tuple[int, int] = (4, 8)
+    seconds_per_query_range: Tuple[int, int] = (90, 150)
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
     search_mode: str = "popular"
@@ -168,6 +169,18 @@ class Section:
     _query_cycle_index: int = field(default=0, init=False, repr=False)
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
     def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
+    def pick_query_duration(self) -> float:
+        try:
+            low, high = self.seconds_per_query_range
+            low = float(low)
+            high = float(high)
+        except Exception:
+            low, high = 90.0, 150.0
+        if high < low:
+            low, high = high, low
+        low = max(1.0, low)
+        high = max(low, high)
+        return random.uniform(low, high)
     def pick_query(self) -> Optional[str]:
         if not self.search_queries:
             return None
@@ -184,6 +197,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (6, 12),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "morning performance",
             "industry trends",
@@ -200,6 +214,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 9),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "client progress",
             "feature rollouts",
@@ -215,6 +230,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 10),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "roadmap items",
             "dev insights",
@@ -230,6 +246,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (4, 8),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "partner announcements",
             "collab opportunities",
@@ -245,6 +262,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 9),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "team shoutouts",
         ],
@@ -259,6 +277,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (6, 12),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "status check",
             "backlog review",
@@ -274,6 +293,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 260),
         "max_responses_before_switch": (3, 6),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "light topics",
             "community notes",
@@ -289,6 +309,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 260),
         "max_responses_before_switch": (4, 8),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "market notes",
             "customer wins",
@@ -304,6 +325,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (7, 13),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "quick scans",
         ],
@@ -318,6 +340,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 10),
+        "seconds_per_query_range": (90, 150),
         "search_queries": [
             "brand mentions",
             "community threads",
@@ -754,36 +777,58 @@ class SchedulerWorker(threading.Thread):
                             processed >= targets_goal):
                         break
                     self._wait_if_paused()
-                    max_responses = max(1, section.pick_max_responses())
-                    remaining_attempts = max_responses
+                    query_seconds = max(1.0, section.pick_query_duration())
+                    query_start = time.monotonic()
+                    query_deadline = query_start + query_seconds
                     mode_label = "Latest" if section.search_mode == "latest" else "Popular"
-                    self._log("INFO", f"Section → {section.name} [{mode_label}] (limit {max_responses})")
+                    self._log(
+                        "INFO",
+                        f"Section → {section.name} [{mode_label}] (budget {query_seconds:.0f}s)",
+                    )
 
                     current_query = section.pick_query() or "general discovery"
                     if self._should_open_search_now(section.name):
                         self._open_search(current_query, section)
                         self._mark_opened(section.name)
 
-                    while remaining_attempts > 0:
+                    time_budget_exhausted = False
+
+                    while True:
                         if (self.stop_event.is_set() or
                                 datetime.now(CET) >= step_deadline or
-                                processed >= targets_goal or
-                                not self._caps_remaining()):
+                                processed >= targets_goal):
+                            break
+                        if time.monotonic() >= query_deadline:
+                            time_budget_exhausted = True
+                            break
+                        if not self._caps_remaining():
+                            break
+
+                        if time.monotonic() >= query_deadline:
+                            time_budget_exhausted = True
                             break
 
                         self._wait_if_paused()
+                        if self.stop_event.is_set():
+                            break
+                        if time.monotonic() >= query_deadline:
+                            time_budget_exhausted = True
+                            break
+
                         self._micro_pause_if_due()
+                        if time.monotonic() >= query_deadline:
+                            time_budget_exhausted = True
+                            break
 
                         if not self._press_j_batch():
+                            break
+                        if time.monotonic() >= query_deadline:
+                            time_budget_exhausted = True
                             break
 
                         reply_text = section.pick_response() or "Starting strong and staying consistent."
                         if not self._allowed_for_text(reply_text):
-                            remaining_attempts -= 1
                             self._log("DEBUG", f"Filtered reply skipped for {section.name}: {reply_text!r}")
-                            if remaining_attempts <= 0:
-                                self._log("INFO", f"Section {section.name} response limit reached (filtered out).")
-                                break
                             continue
 
                         if self.cfg.get("transparency_tag_enabled", False):
@@ -797,10 +842,10 @@ class SchedulerWorker(threading.Thread):
                         self._record_reply(reply_text)
                         processed += 1; self.action_counter += 1; self._bump_counters()
 
-                        remaining_attempts -= 1
-                        if remaining_attempts <= 0:
-                            self._log("INFO", f"Section {section.name} response limit reached.")
-                            break
+                    spent = max(0.0, time.monotonic() - query_start)
+                    if time_budget_exhausted:
+                        spent = min(spent, query_seconds)
+                        self._log("INFO", f"Section {section.name} time budget reached ({spent:.0f}s).")
 
                 if datetime.now(CET) < self.session_end and not self.stop_event.is_set():
                     until = min(self.session_end, datetime.now(CET) + timedelta(minutes=break_minutes))
@@ -1282,6 +1327,7 @@ class App(tk.Tk):
             "enabled": True,
             "typing_ms_per_char": (220, 240),
             "max_responses_before_switch": (4, 8),
+            "seconds_per_query_range": (90, 150),
             "search_queries": [],
             "responses": [],
             "search_mode": "popular",
@@ -1300,6 +1346,8 @@ class App(tk.Tk):
             base["typing_ms_per_char"] = (220, 240)
         if "max_responses_before_switch" not in base:
             base["max_responses_before_switch"] = (4, 8)
+        if "seconds_per_query_range" not in base:
+            base["seconds_per_query_range"] = (90, 150)
         if "search_queries" not in base:
             base["search_queries"] = []
         if "responses" not in base:
@@ -1338,6 +1386,15 @@ class App(tk.Tk):
             resp_max_val = int(resp_rng[1])
         except Exception:
             resp_min_val, resp_max_val = 4, 8
+
+        dur_rng = seed.get("seconds_per_query_range", (90, 150))
+        if not isinstance(dur_rng, (list, tuple)) or len(dur_rng) != 2:
+            dur_rng = (90, 150)
+        try:
+            dur_min_val = int(dur_rng[0])
+            dur_max_val = int(dur_rng[1])
+        except Exception:
+            dur_min_val, dur_max_val = 90, 150
 
         raw_queries = seed.get("search_queries", [])
         if isinstance(raw_queries, str):
@@ -1380,6 +1437,8 @@ class App(tk.Tk):
         v_typ_max = tk.IntVar(value=typ_max_val)
         v_resp_min = tk.IntVar(value=resp_min_val)
         v_resp_max = tk.IntVar(value=resp_max_val)
+        v_dur_min = tk.IntVar(value=dur_min_val)
+        v_dur_max = tk.IntVar(value=dur_max_val)
         name_var = tk.StringVar(value=seed_name)
         enabled_var = tk.BooleanVar(value=enabled_default)
 
@@ -1398,6 +1457,8 @@ class App(tk.Tk):
                 "typ_max": v_typ_max,
                 "resp_min": v_resp_min,
                 "resp_max": v_resp_max,
+                "dur_min": v_dur_min,
+                "dur_max": v_dur_max,
                 "mode_var": mode_var,
                 "default_mode": default_mode_ui,
             }
@@ -1459,6 +1520,7 @@ class App(tk.Tk):
 
         self._pair(col, "Typing ms/char (min/max)", v_typ_min, v_typ_max)
         self._pair(col, "Max responses before switch (min/max)", v_resp_min, v_resp_max)
+        self._pair(col, "Seconds per query (min/max)", v_dur_min, v_dur_max)
 
         ttk.Label(col, text="Search queries (one per line):").pack(anchor="w", pady=(8, 2))
         txt_q = scrolledtext.ScrolledText(col, height=6)
@@ -2351,6 +2413,11 @@ class App(tk.Tk):
             name = raw_name or default_name
             tmin = int(sv["typ_min"].get()); tmax = int(sv["typ_max"].get())
             rmin = int(sv["resp_min"].get()); rmax = int(sv["resp_max"].get())
+            dmin = int(sv["dur_min"].get()); dmax = int(sv["dur_max"].get())
+            if dmax < dmin:
+                dmin, dmax = dmax, dmin
+            dmin = max(1, dmin)
+            dmax = max(dmin, dmax)
             mode_var = sv.get("mode_var")
             mode_raw = mode_var.get() if mode_var is not None else "popular"
             mode_norm = normalize_search_mode(mode_raw)
@@ -2366,6 +2433,7 @@ class App(tk.Tk):
                 name=name,
                 typing_ms_per_char=(tmin, tmax),
                 max_responses_before_switch=(rmin, rmax),
+                seconds_per_query_range=(dmin, dmax),
                 search_queries=q_lines,
                 responses=r_lines,
                 search_mode=mode_value,
@@ -2396,12 +2464,22 @@ class App(tk.Tk):
             mode_value = "popular"
         else:
             mode_value = fallback_mode
+        try:
+            dur_min = int(sv["dur_min"].get())
+            dur_max = int(sv["dur_max"].get())
+        except Exception:
+            dur_min, dur_max = 90, 150
+        if dur_max < dur_min:
+            dur_min, dur_max = dur_max, dur_min
+        dur_min = max(1, dur_min)
+        dur_max = max(dur_min, dur_max)
         return {
             "name": name,
             "enabled": bool(sv["enabled_var"].get()),
             "search_mode": mode_value,
             "typing_ms_per_char": (int(sv["typ_min"].get()), int(sv["typ_max"].get())),
             "max_responses_before_switch": (int(sv["resp_min"].get()), int(sv["resp_max"].get())),
+            "seconds_per_query_range": (dur_min, dur_max),
             "search_queries": [
                 ln.strip()
                 for ln in sv["txt_queries"].get("1.0", "end").splitlines()
@@ -2560,6 +2638,10 @@ class App(tk.Tk):
             rpair = section_cfg.get("max_responses_before_switch")
             if isinstance(rpair, (list, tuple)) and len(rpair) == 2:
                 sv["resp_min"].set(int(rpair[0])); sv["resp_max"].set(int(rpair[1]))
+
+            dur_pair = section_cfg.get("seconds_per_query_range")
+            if isinstance(dur_pair, (list, tuple)) and len(dur_pair) == 2:
+                sv["dur_min"].set(int(dur_pair[0])); sv["dur_max"].set(int(dur_pair[1]))
 
             queries_value = section_cfg.get("search_queries", None)
             if isinstance(queries_value, str):
