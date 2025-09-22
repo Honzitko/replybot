@@ -875,6 +875,8 @@ class App(tk.Tk):
         self._news_items_by_key: Dict[str, Dict[str, Any]] = {}
         self.sections_vars: List[Dict[str, Any]] = []
         self.sections_notebook: Optional[ttk.Notebook] = None
+        self.section_templates: List[Dict[str, Any]] = copy.deepcopy(DEFAULT_SECTIONS_SEED)
+        self.section_delete_button: Optional[ttk.Button] = None
 
         self._rss_enabled = False
         default_interval_minutes = int(DEFAULT_INTERVAL_SECONDS // 60)
@@ -1237,133 +1239,344 @@ class App(tk.Tk):
 
     def _build_sections_tab(self, root):
         self.sections_vars = []
-        self.sections_notebook = ttk.Notebook(root)
-        self.sections_notebook.pack(fill="both", expand=True, padx=6, pady=6)
+        container = ttk.Frame(root)
+        container.pack(fill="both", expand=True, padx=6, pady=6)
 
-        for seed in DEFAULT_SECTIONS_SEED:
-            default_name = str(seed.get("name", "Section"))
-            typ_rng = seed.get("typing_ms_per_char", (220, 240))
-            max_resp = seed.get("max_responses_before_switch", (4, 8))
-            queries = list(seed.get("search_queries", []))
-            responses = list(seed.get("responses", []))
-            enabled_default = bool(seed.get("enabled", True))
+        controls = ttk.Frame(container)
+        controls.pack(fill="x", pady=(0, 6))
 
-            index = len(self.sections_vars)
-            order_var = tk.IntVar(value=index)
+        add_menu = ttk.Menubutton(controls, text="Add section")
+        add_menu_menu = tk.Menu(add_menu, tearoff=False)
+        add_menu_menu.add_command(label="Blank section", command=self._add_blank_section)
+        if DEFAULT_SECTIONS_SEED:
+            add_menu_menu.add_separator()
+            for seed in DEFAULT_SECTIONS_SEED:
+                label = str(seed.get("name") or "Section")
+                add_menu_menu.add_command(
+                    label=f"Template: {label}",
+                    command=lambda template=seed: self._add_section_from_seed(template),
+                )
+        add_menu["menu"] = add_menu_menu
+        add_menu.pack(side="left")
 
-            tab = ttk.Frame(self.sections_notebook)
-            self.sections_notebook.add(tab, text=self._section_tab_title(default_name))
+        delete_btn = ttk.Button(controls, text="Delete current section", command=self._delete_current_section)
+        delete_btn.pack(side="left", padx=(6, 0))
+        self.section_delete_button = delete_btn
 
-            sv: Dict[str, Any] = {
-                "default_name": default_name,
-                "default_enabled": enabled_default,
-                "order_var": order_var,
-                "tab": tab,
-                "default_index": index,
-            }
+        self.sections_notebook = ttk.Notebook(container)
+        self.sections_notebook.pack(fill="both", expand=True)
+        self.sections_notebook.bind("<<NotebookTabChanged>>", self._update_section_controls)
 
-            v_typ_min = tk.IntVar(value=int(typ_rng[0]))
-            v_typ_max = tk.IntVar(value=int(typ_rng[1]))
-            v_resp_min = tk.IntVar(value=int(max_resp[0]))
-            v_resp_max = tk.IntVar(value=int(max_resp[1]))
-            name_var = tk.StringVar(value=default_name)
-            enabled_var = tk.BooleanVar(value=enabled_default)
-            mode_seed = normalize_search_mode(seed.get("search_mode", "popular"))
-            if mode_seed in LATEST_SEARCH_MODES:
-                default_mode_ui = "Latest"
-            else:
-                default_mode_ui = "Popular"
-            mode_var = tk.StringVar(value=default_mode_ui)
+        if not self.section_templates:
+            self.section_templates = copy.deepcopy(DEFAULT_SECTIONS_SEED)
 
-            sv.update({
+        for seed in self.section_templates:
+            self._append_section_tab(seed, select=False, mark_dirty=False)
+
+        self._sync_section_tab_order()
+        self._update_section_controls()
+
+    def _new_section_seed(self) -> Dict[str, Any]:
+        return {
+            "name": "",
+            "enabled": True,
+            "typing_ms_per_char": (220, 240),
+            "max_responses_before_switch": (4, 8),
+            "search_queries": [],
+            "responses": [],
+            "search_mode": "popular",
+        }
+
+    def _add_blank_section(self) -> None:
+        self._add_section_from_seed(self._new_section_seed())
+
+    def _add_section_from_seed(self, seed: Dict[str, Any]) -> None:
+        if not isinstance(seed, dict):
+            seed = {}
+        base = copy.deepcopy(seed)
+        if "name" not in base:
+            base["name"] = ""
+        if "typing_ms_per_char" not in base:
+            base["typing_ms_per_char"] = (220, 240)
+        if "max_responses_before_switch" not in base:
+            base["max_responses_before_switch"] = (4, 8)
+        if "search_queries" not in base:
+            base["search_queries"] = []
+        if "responses" not in base:
+            base["responses"] = []
+        if "search_mode" not in base:
+            base["search_mode"] = "popular"
+        if "enabled" not in base:
+            base["enabled"] = True
+        base.pop("order", None)
+
+        self.section_templates.append(base)
+        self._append_section_tab(base, select=True, mark_dirty=True)
+
+    def _append_section_tab(self, seed: Dict[str, Any], *, select: bool = True, mark_dirty: bool = True) -> Optional[Dict[str, Any]]:
+        notebook = getattr(self, "sections_notebook", None)
+        if notebook is None:
+            return None
+
+        seed_name = str(seed.get("name", "") or "").strip()
+        fallback_name = seed_name or f"Section {len(self.sections_vars) + 1}"
+
+        typ_rng = seed.get("typing_ms_per_char", (220, 240))
+        if not isinstance(typ_rng, (list, tuple)) or len(typ_rng) != 2:
+            typ_rng = (220, 240)
+        try:
+            typ_min_val = int(typ_rng[0])
+            typ_max_val = int(typ_rng[1])
+        except Exception:
+            typ_min_val, typ_max_val = 220, 240
+
+        resp_rng = seed.get("max_responses_before_switch", (4, 8))
+        if not isinstance(resp_rng, (list, tuple)) or len(resp_rng) != 2:
+            resp_rng = (4, 8)
+        try:
+            resp_min_val = int(resp_rng[0])
+            resp_max_val = int(resp_rng[1])
+        except Exception:
+            resp_min_val, resp_max_val = 4, 8
+
+        raw_queries = seed.get("search_queries", [])
+        if isinstance(raw_queries, str):
+            queries = [ln.strip() for ln in raw_queries.splitlines() if ln.strip()]
+        elif isinstance(raw_queries, (list, tuple)):
+            queries = [str(ln).strip() for ln in raw_queries if str(ln).strip()]
+        else:
+            queries = []
+
+        raw_responses = seed.get("responses", [])
+        if isinstance(raw_responses, str):
+            responses = [ln.strip() for ln in raw_responses.splitlines() if ln.strip()]
+        elif isinstance(raw_responses, (list, tuple)):
+            responses = [str(ln).strip() for ln in raw_responses if str(ln).strip()]
+        else:
+            responses = []
+
+        enabled_default = bool(seed.get("enabled", True))
+
+        order_default = seed.get("order")
+        try:
+            order_value = int(order_default)
+        except Exception:
+            order_value = len(self.sections_vars)
+        order_var = tk.IntVar(value=order_value)
+
+        tab = ttk.Frame(notebook)
+        notebook.add(tab, text=self._section_tab_title(seed_name, fallback=fallback_name))
+
+        sv: Dict[str, Any] = {
+            "default_name": fallback_name,
+            "default_enabled": enabled_default,
+            "order_var": order_var,
+            "tab": tab,
+            "default_index": len(self.sections_vars),
+            "seed_ref": seed,
+        }
+
+        v_typ_min = tk.IntVar(value=typ_min_val)
+        v_typ_max = tk.IntVar(value=typ_max_val)
+        v_resp_min = tk.IntVar(value=resp_min_val)
+        v_resp_max = tk.IntVar(value=resp_max_val)
+        name_var = tk.StringVar(value=seed_name)
+        enabled_var = tk.BooleanVar(value=enabled_default)
+
+        mode_seed = normalize_search_mode(seed.get("search_mode", "popular"))
+        if mode_seed in LATEST_SEARCH_MODES:
+            default_mode_ui = "Latest"
+        else:
+            default_mode_ui = "Popular"
+        mode_var = tk.StringVar(value=default_mode_ui)
+
+        sv.update(
+            {
                 "name_var": name_var,
                 "enabled_var": enabled_var,
                 "typ_min": v_typ_min,
                 "typ_max": v_typ_max,
                 "resp_min": v_resp_min,
                 "resp_max": v_resp_max,
-            })
+                "mode_var": mode_var,
+                "default_mode": default_mode_ui,
+            }
+        )
 
-            col = ttk.Frame(tab)
-            col.pack(fill="both", expand=True, padx=10, pady=10)
+        col = ttk.Frame(tab)
+        col.pack(fill="both", expand=True, padx=10, pady=10)
 
-            header = ttk.Frame(col)
-            header.pack(fill="x", pady=(0, 8))
-            header.columnconfigure(1, weight=1)
-            ttk.Label(header, text="Section name:").grid(row=0, column=0, sticky="w")
-            entry_name = ttk.Entry(header, textvariable=name_var)
-            entry_name.grid(row=0, column=1, sticky="ew", padx=(6, 0))
-            entry_name.bind("<KeyRelease>", lambda *_: self._mark_dirty())
-            ttk.Checkbutton(header, text="Enabled", variable=enabled_var, command=self._mark_dirty).grid(
-                row=0, column=2, sticky="w", padx=(12, 0)
+        header = ttk.Frame(col)
+        header.pack(fill="x", pady=(0, 8))
+        header.columnconfigure(1, weight=1)
+        ttk.Label(header, text="Section name:").grid(row=0, column=0, sticky="w")
+        entry_name = ttk.Entry(header, textvariable=name_var)
+        entry_name.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        entry_name.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+        ttk.Checkbutton(header, text="Enabled", variable=enabled_var, command=self._mark_dirty).grid(
+            row=0, column=2, sticky="w", padx=(12, 0)
+        )
+        ttk.Label(header, text="Search filter:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        mode_cb = ttk.Combobox(
+            header,
+            textvariable=mode_var,
+            state="readonly",
+            values=["Popular", "Latest"],
+            width=12,
+        )
+        mode_cb.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        mode_cb.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
+
+        controls = ttk.Frame(header)
+        controls.grid(row=0, column=3, sticky="e", padx=(12, 0))
+        ttk.Button(
+            controls,
+            text="↑",
+            width=2,
+            command=lambda sv=sv: self._move_section_order(sv, -1),
+        ).pack(side="top")
+        ttk.Button(
+            controls,
+            text="↓",
+            width=2,
+            command=lambda sv=sv: self._move_section_order(sv, 1),
+        ).pack(side="top", pady=(2, 0))
+
+        def update_tab_label(
+            *_,
+            notebook=notebook,
+            current_tab=tab,
+            var=name_var,
+            default=fallback_name,
+        ):
+            notebook.tab(
+                current_tab,
+                text=self._section_tab_title(var.get(), fallback=default),
             )
-            ttk.Label(header, text="Search filter:").grid(row=1, column=0, sticky="w", pady=(6, 0))
-            mode_cb = ttk.Combobox(
-                header,
-                textvariable=mode_var,
-                state="readonly",
-                values=["Popular", "Latest"],
-                width=12,
-            )
-            mode_cb.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-            mode_cb.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
-            controls = ttk.Frame(header)
-            controls.grid(row=0, column=3, sticky="e", padx=(12, 0))
-            ttk.Button(
-                controls,
-                text="↑",
-                width=2,
-                command=lambda sv=sv: self._move_section_order(sv, -1),
-            ).pack(side="top")
-            ttk.Button(
-                controls,
-                text="↓",
-                width=2,
-                command=lambda sv=sv: self._move_section_order(sv, 1),
-            ).pack(side="top", pady=(2, 0))
+        update_tab_label()
+        name_var.trace_add("write", update_tab_label)
 
-            def update_tab_label(
-                *_,
-                notebook=self.sections_notebook,
-                current_tab=tab,
-                var=name_var,
-                default=default_name,
-            ):
-                notebook.tab(
-                    current_tab,
-                    text=self._section_tab_title(var.get(), fallback=default),
-                )
+        self._pair(col, "Typing ms/char (min/max)", v_typ_min, v_typ_max)
+        self._pair(col, "Max responses before switch (min/max)", v_resp_min, v_resp_max)
 
-            update_tab_label()
-            name_var.trace_add("write", update_tab_label)
-
-            self._pair(col, "Typing ms/char (min/max)", v_typ_min, v_typ_max)
-            self._pair(col, "Max responses before switch (min/max)", v_resp_min, v_resp_max)
-
-            ttk.Label(col, text="Search queries (one per line):").pack(anchor="w", pady=(8, 2))
-            txt_q = scrolledtext.ScrolledText(col, height=6)
+        ttk.Label(col, text="Search queries (one per line):").pack(anchor="w", pady=(8, 2))
+        txt_q = scrolledtext.ScrolledText(col, height=6)
+        if queries:
             txt_q.insert("1.0", "\n".join(queries))
-            txt_q.pack(fill="both", expand=False)
+        txt_q.pack(fill="both", expand=False)
 
-            ttk.Label(col, text="Responses (one per line):").pack(anchor="w", pady=(8, 2))
-            txt_r = scrolledtext.ScrolledText(col, height=8)
+        ttk.Label(col, text="Responses (one per line):").pack(anchor="w", pady=(8, 2))
+        txt_r = scrolledtext.ScrolledText(col, height=8)
+        if responses:
             txt_r.insert("1.0", "\n".join(responses))
-            txt_r.pack(fill="both", expand=True)
+        txt_r.pack(fill="both", expand=True)
 
-            txt_q.bind("<<Modified>>", self._on_text_modified)
-            txt_r.bind("<<Modified>>", self._on_text_modified)
+        txt_q.bind("<<Modified>>", self._on_text_modified)
+        txt_r.bind("<<Modified>>", self._on_text_modified)
 
-            sv.update({
-
+        sv.update(
+            {
                 "txt_queries": txt_q,
                 "txt_responses": txt_r,
-            })
+            }
+        )
 
-            self.sections_vars.append(sv)
-
-        self._bind_dirty(self.sections_notebook)
+        self.sections_vars.append(sv)
+        self._ordered_section_vars()
         self._sync_section_tab_order()
+
+        if select:
+            try:
+                notebook.select(tab)
+                entry_name.focus_set()
+            except tk.TclError:
+                pass
+
+        self._update_section_controls()
+        if mark_dirty:
+            self._mark_dirty()
+
+        return sv
+
+    def _delete_current_section(self) -> None:
+        notebook = getattr(self, "sections_notebook", None)
+        if notebook is None:
+            return
+        current = notebook.select()
+        if not current:
+            return
+        try:
+            tab_widget = notebook.nametowidget(current)
+        except KeyError:
+            tab_widget = None
+        if tab_widget is None:
+            return
+        for sv in list(self.sections_vars):
+            if sv.get("tab") is tab_widget:
+                self._delete_section_sv(sv, mark_dirty=True)
+                break
+
+    def _delete_section_sv(self, sv: Dict[str, Any], *, mark_dirty: bool) -> None:
+        notebook = getattr(self, "sections_notebook", None)
+        tab = sv.get("tab")
+        if notebook is not None and tab is not None:
+            try:
+                notebook.forget(tab)
+            except tk.TclError:
+                pass
+            try:
+                tab.destroy()
+            except tk.TclError:
+                pass
+
+        if sv in self.sections_vars:
+            self.sections_vars.remove(sv)
+
+        seed_ref = sv.get("seed_ref")
+        if seed_ref is not None:
+            self.section_templates = [item for item in self.section_templates if item is not seed_ref]
+
+        self._ordered_section_vars()
+        self._sync_section_tab_order()
+
+        if notebook is not None:
+            tabs = notebook.tabs()
+            if tabs:
+                current = notebook.select()
+                if current not in tabs:
+                    notebook.select(tabs[0])
+
+        self._update_section_controls()
+        if mark_dirty:
+            self._mark_dirty()
+
+    def _update_section_controls(self, *_args) -> None:
+        btn = getattr(self, "section_delete_button", None)
+        notebook = getattr(self, "sections_notebook", None)
+        if btn is None or notebook is None:
+            return
+        tabs = notebook.tabs() if notebook else []
+        state = "normal" if tabs else "disabled"
+        try:
+            btn.configure(state=state)
+        except tk.TclError:
+            pass
+
+    def _ensure_section_tab_count(self, desired: int) -> None:
+        current = len(self.sections_vars)
+        if desired < 0:
+            desired = 0
+        if current < desired:
+            for _ in range(desired - current):
+                seed = self._new_section_seed()
+                self.section_templates.append(seed)
+                self._append_section_tab(seed, select=False, mark_dirty=False)
+        elif current > desired:
+            ordered = self._ordered_section_vars()
+            for sv in list(ordered[desired:]):
+                self._delete_section_sv(sv, mark_dirty=False)
+
 
     def _build_news_tab(self, root):
         wrapper = ttk.Frame(root)
@@ -1898,6 +2111,13 @@ class App(tk.Tk):
                 except Exception:
                     pass
         self.sections_vars = ordered
+        template_order: List[Dict[str, Any]] = []
+        for sv in ordered:
+            seed_ref = sv.get("seed_ref")
+            if seed_ref is not None:
+                template_order.append(seed_ref)
+        if len(template_order) == len(self.section_templates):
+            self.section_templates = template_order
         return ordered
 
     def _sync_section_tab_order(self) -> None:
@@ -2262,6 +2482,7 @@ class App(tk.Tk):
         self.var_rss_interval_minutes.set(interval_val)
 
         # sections
+        sections_present = "sections" in data
         raw_sections = data.get("sections", [])
         ordered_cfg: List[Dict[str, Any]] = []
         if isinstance(raw_sections, list):
@@ -2277,9 +2498,20 @@ class App(tk.Tk):
                 temp.append((order_key, idx, section_cfg))
             temp.sort(key=lambda item: (item[0], item[1]))
             ordered_cfg = [item[2] for item in temp]
+
+        if sections_present:
+            self._ensure_section_tab_count(len(ordered_cfg))
+        elif not self.sections_vars:
+            if not self.section_templates:
+                self.section_templates = copy.deepcopy(DEFAULT_SECTIONS_SEED)
+            self._ensure_section_tab_count(len(self.section_templates))
+
         ordered_vars = self._ordered_section_vars()
-        while len(ordered_cfg) < len(ordered_vars):
-            ordered_cfg.append({})
+        if ordered_cfg:
+            while len(ordered_cfg) < len(ordered_vars):
+                ordered_cfg.append({})
+        else:
+            ordered_cfg = [{} for _ in ordered_vars]
 
         for idx, sv in enumerate(ordered_vars):
             section_cfg = ordered_cfg[idx] if idx < len(ordered_cfg) else {}
@@ -2356,6 +2588,14 @@ class App(tk.Tk):
                 sv["txt_responses"].edit_modified(False)
 
         self._sync_section_tab_order()
+        ordered_after = self._ordered_section_vars()
+        new_templates: List[Dict[str, Any]] = []
+        for idx, sv in enumerate(ordered_after):
+            template_dict = copy.deepcopy(self._section_to_dict(idx, sv))
+            new_templates.append(template_dict)
+            sv["seed_ref"] = template_dict
+        self.section_templates = new_templates
+        self._update_section_controls()
 
         self.dirty = False
         self.lbl_dirty.configure(text="")
