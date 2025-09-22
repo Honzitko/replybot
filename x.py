@@ -163,6 +163,7 @@ class Section:
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
     enabled: bool = True
+    order: int = 0
     _query_cycle_index: int = field(default=0, init=False, repr=False)
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
     def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
@@ -436,7 +437,14 @@ class SchedulerWorker(threading.Thread):
     ):
         super().__init__(daemon=True)
         self.cfg = cfg
-        self.sections = sections
+        indexed_sections = list(enumerate(sections))
+        indexed_sections.sort(key=lambda item: (getattr(item[1], "order", item[0]), item[0]))
+        self.sections = [sec for _idx, sec in indexed_sections]
+        for idx, section in enumerate(self.sections):
+            try:
+                section.order = idx
+            except Exception:
+                pass
         self.logq = logq
         self.stop_event = stop_event
         self.pause_event = pause_event
@@ -713,10 +721,9 @@ class SchedulerWorker(threading.Thread):
                 step_deadline = datetime.now(CET) + timedelta(minutes=step_minutes)
                 targets_goal = max(1, int(rand_minutes(self.cfg["targets_per_step_range"]) * self.activity_scale))
 
-                sections = self.sections[:]; random.shuffle(sections)
                 processed = 0
 
-                for section in sections:
+                for section in self.sections:
                     if (self.stop_event.is_set() or
                             datetime.now(CET) >= step_deadline or
                             processed >= targets_goal):
@@ -840,6 +847,8 @@ class App(tk.Tk):
         self.run_monitor: Optional["App._RunMonitor"] = None
         self._session_active: bool = False
         self._news_items_by_key: Dict[str, Dict[str, Any]] = {}
+        self.sections_vars: List[Dict[str, Any]] = []
+        self.sections_notebook: Optional[ttk.Notebook] = None
 
         self._rss_enabled = False
         default_interval_minutes = int(DEFAULT_INTERVAL_SECONDS // 60)
@@ -1206,7 +1215,8 @@ class App(tk.Tk):
 
     def _build_sections_tab(self, root):
         self.sections_vars = []
-        nb = ttk.Notebook(root); nb.pack(fill="both", expand=True, padx=6, pady=6)
+        self.sections_notebook = ttk.Notebook(root)
+        self.sections_notebook.pack(fill="both", expand=True, padx=6, pady=6)
 
         for seed in DEFAULT_SECTIONS_SEED:
             default_name = str(seed.get("name", "Section"))
@@ -1216,17 +1226,41 @@ class App(tk.Tk):
             responses = list(seed.get("responses", []))
             enabled_default = bool(seed.get("enabled", True))
 
-            tab = ttk.Frame(nb)
-            nb.add(tab, text=self._section_tab_title(default_name))
+            index = len(self.sections_vars)
+            order_var = tk.IntVar(value=index)
 
-            v_typ_min = tk.IntVar(value=int(typ_rng[0])); v_typ_max = tk.IntVar(value=int(typ_rng[1]))
-            v_resp_min = tk.IntVar(value=int(max_resp[0])); v_resp_max = tk.IntVar(value=int(max_resp[1]))
+            tab = ttk.Frame(self.sections_notebook)
+            self.sections_notebook.add(tab, text=self._section_tab_title(default_name))
+
+            sv: Dict[str, Any] = {
+                "default_name": default_name,
+                "default_enabled": enabled_default,
+                "order_var": order_var,
+                "tab": tab,
+                "default_index": index,
+            }
+
+            v_typ_min = tk.IntVar(value=int(typ_rng[0]))
+            v_typ_max = tk.IntVar(value=int(typ_rng[1]))
+            v_resp_min = tk.IntVar(value=int(max_resp[0]))
+            v_resp_max = tk.IntVar(value=int(max_resp[1]))
             name_var = tk.StringVar(value=default_name)
             enabled_var = tk.BooleanVar(value=enabled_default)
 
-            col = ttk.Frame(tab); col.pack(fill="both", expand=True, padx=10, pady=10)
+            sv.update({
+                "name_var": name_var,
+                "enabled_var": enabled_var,
+                "typ_min": v_typ_min,
+                "typ_max": v_typ_max,
+                "resp_min": v_resp_min,
+                "resp_max": v_resp_max,
+            })
 
-            header = ttk.Frame(col); header.pack(fill="x", pady=(0, 8))
+            col = ttk.Frame(tab)
+            col.pack(fill="both", expand=True, padx=10, pady=10)
+
+            header = ttk.Frame(col)
+            header.pack(fill="x", pady=(0, 8))
             header.columnconfigure(1, weight=1)
             ttk.Label(header, text="Section name:").grid(row=0, column=0, sticky="w")
             entry_name = ttk.Entry(header, textvariable=name_var)
@@ -1236,9 +1270,24 @@ class App(tk.Tk):
                 row=0, column=2, sticky="w", padx=(12, 0)
             )
 
+            controls = ttk.Frame(header)
+            controls.grid(row=0, column=3, sticky="e", padx=(12, 0))
+            ttk.Button(
+                controls,
+                text="↑",
+                width=2,
+                command=lambda sv=sv: self._move_section_order(sv, -1),
+            ).pack(side="top")
+            ttk.Button(
+                controls,
+                text="↓",
+                width=2,
+                command=lambda sv=sv: self._move_section_order(sv, 1),
+            ).pack(side="top", pady=(2, 0))
+
             def update_tab_label(
                 *_,
-                notebook=nb,
+                notebook=self.sections_notebook,
                 current_tab=tab,
                 var=name_var,
                 default=default_name,
@@ -1267,19 +1316,15 @@ class App(tk.Tk):
             txt_q.bind("<<Modified>>", self._on_text_modified)
             txt_r.bind("<<Modified>>", self._on_text_modified)
 
-            self.sections_vars.append({
-                "default_name": default_name,
-                "default_enabled": enabled_default,
-                "name_var": name_var,
-                "enabled_var": enabled_var,
-                "typ_min": v_typ_min,
-                "typ_max": v_typ_max,
-                "resp_min": v_resp_min,
-                "resp_max": v_resp_max,
+            sv.update({
                 "txt_queries": txt_q,
                 "txt_responses": txt_r,
             })
-        self._bind_dirty(nb)
+
+            self.sections_vars.append(sv)
+
+        self._bind_dirty(self.sections_notebook)
+        self._sync_section_tab_order()
 
     def _build_news_tab(self, root):
         wrapper = ttk.Frame(root)
@@ -1784,6 +1829,74 @@ class App(tk.Tk):
             text = "Section"
         return text[:16] + ("…" if len(text) > 16 else "")
 
+    def _section_order_value(self, sv: Dict[str, Any], fallback: int = 0) -> int:
+        order_var = sv.get("order_var")
+        if order_var is not None:
+            try:
+                return int(order_var.get())
+            except Exception:
+                pass
+        try:
+            return int(sv.get("default_index", fallback))
+        except Exception:
+            return fallback
+
+    def _section_order_key(self, sv: Dict[str, Any]) -> Tuple[int, int]:
+        order_value = self._section_order_value(sv, fallback=int(sv.get("default_index", 0)))
+        default_index = int(sv.get("default_index", 0))
+        return order_value, default_index
+
+    def _ordered_section_vars(self) -> List[Dict[str, Any]]:
+        sections = list(getattr(self, "sections_vars", []))
+        if not sections:
+            return sections
+        ordered = sorted(sections, key=self._section_order_key)
+        for idx, sv in enumerate(ordered):
+            order_var = sv.get("order_var")
+            if order_var is not None:
+                try:
+                    order_var.set(idx)
+                except Exception:
+                    pass
+        self.sections_vars = ordered
+        return ordered
+
+    def _sync_section_tab_order(self) -> None:
+        notebook = getattr(self, "sections_notebook", None)
+        if notebook is None:
+            return
+        ordered = self._ordered_section_vars()
+        for idx, sv in enumerate(ordered):
+            tab = sv.get("tab")
+            if tab is not None:
+                notebook.insert(idx, tab)
+
+    def _move_section_order(self, sv: Dict[str, Any], delta: int) -> None:
+        ordered = self._ordered_section_vars()
+        try:
+            index = ordered.index(sv)
+        except ValueError:
+            return
+        target = max(0, min(len(ordered) - 1, index + delta))
+        if target == index:
+            return
+        current_var = sv.get("order_var")
+        other_var = ordered[target].get("order_var")
+        if current_var is None or other_var is None:
+            return
+        try:
+            current_value = int(current_var.get())
+        except Exception:
+            current_value = index
+        try:
+            other_value = int(other_var.get())
+        except Exception:
+            other_value = target
+        current_var.set(other_value)
+        other_var.set(current_value)
+        self._sync_section_tab_order()
+        self._mark_dirty()
+
     def _bind_dirty(self, container):
         for child in container.winfo_children():
             if isinstance(child, ttk.Entry) or isinstance(child, ttk.Combobox):
@@ -1971,7 +2084,7 @@ class App(tk.Tk):
 
     def _collect_sections(self) -> List[Section]:
         out: List[Section] = []
-        for sv in self.sections_vars:
+        for idx, sv in enumerate(self._ordered_section_vars()):
             enabled = bool(sv["enabled_var"].get())
             if not enabled:
                 continue
@@ -1989,14 +2102,18 @@ class App(tk.Tk):
                 search_queries=q_lines,
                 responses=r_lines,
                 enabled=enabled,
+                order=idx,
             ))
         return out
 
     def _config_to_dict(self) -> Dict:
-        return {"config": self._collect_config(),
-                "sections": [self._section_to_dict(sv) for sv in self.sections_vars]}
+        ordered = self._ordered_section_vars()
+        return {
+            "config": self._collect_config(),
+            "sections": [self._section_to_dict(idx, sv) for idx, sv in enumerate(ordered)],
+        }
 
-    def _section_to_dict(self, sv: Dict) -> Dict:
+    def _section_to_dict(self, idx: int, sv: Dict) -> Dict:
         default_name = sv.get("default_name", "Section")
         name = str(sv["name_var"].get()).strip() or default_name
         return {
@@ -2014,6 +2131,7 @@ class App(tk.Tk):
                 for ln in sv["txt_responses"].get("1.0", "end").splitlines()
                 if ln.strip()
             ],
+            "order": self._section_order_value(sv, fallback=idx),
         }
 
     def _apply_profile_dict(self, data: Dict):
@@ -2086,14 +2204,40 @@ class App(tk.Tk):
         self.var_rss_interval_minutes.set(interval_val)
 
         # sections
-        sections_data = data.get("sections", [])
-        for idx, sv in enumerate(self.sections_vars):
-            section_cfg = sections_data[idx] if idx < len(sections_data) else {}
+        raw_sections = data.get("sections", [])
+        ordered_cfg: List[Dict[str, Any]] = []
+        if isinstance(raw_sections, list):
+            temp: List[Tuple[int, int, Dict[str, Any]]] = []
+            for idx, section_cfg in enumerate(raw_sections):
+                if not isinstance(section_cfg, dict):
+                    continue
+                order_val = section_cfg.get("order")
+                try:
+                    order_key = int(order_val)
+                except Exception:
+                    order_key = idx
+                temp.append((order_key, idx, section_cfg))
+            temp.sort(key=lambda item: (item[0], item[1]))
+            ordered_cfg = [item[2] for item in temp]
+        ordered_vars = self._ordered_section_vars()
+        while len(ordered_cfg) < len(ordered_vars):
+            ordered_cfg.append({})
+
+        for idx, sv in enumerate(ordered_vars):
+            section_cfg = ordered_cfg[idx] if idx < len(ordered_cfg) else {}
             if not isinstance(section_cfg, dict):
                 section_cfg = {}
 
             default_name = sv.get("default_name", "Section")
             default_enabled = bool(sv.get("default_enabled", True))
+
+            order_val = section_cfg.get("order")
+            if order_val is None:
+                order_val = idx
+            try:
+                sv["order_var"].set(int(order_val))
+            except Exception:
+                sv["order_var"].set(idx)
 
             name_value = str(section_cfg.get("name") or "").strip()
             sv["name_var"].set(name_value or default_name)
@@ -2136,6 +2280,8 @@ class App(tk.Tk):
                 if r_lines:
                     sv["txt_responses"].insert("1.0", "\n".join(r_lines))
                 sv["txt_responses"].edit_modified(False)
+
+        self._sync_section_tab_order()
 
         self.dirty = False
         self.lbl_dirty.configure(text="")
