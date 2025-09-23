@@ -19,7 +19,7 @@ STEP_PAUSE_MIN = x.STEP_PAUSE_MIN
 STEP_PAUSE_MAX = x.STEP_PAUSE_MAX
 FAST_J_INITIAL_DELAY_RANGE = x.FAST_J_INITIAL_DELAY_RANGE
 
-POPULAR_INITIAL_J_COUNT = x.POPULAR_INITIAL_J_COUNT
+POPULAR_INITIAL_J_RANGE = x.POPULAR_INITIAL_J_RANGE
 
 
 class DummyKB:
@@ -167,8 +167,12 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
 
     ranges = []
 
+    initial_press_count = POPULAR_INITIAL_J_RANGE[0] + 1
+
     def fake_randint(a, b):
         ranges.append((a, b))
+        if (a, b) == POPULAR_INITIAL_J_RANGE:
+            return initial_press_count
 
         return 3
 
@@ -186,11 +190,11 @@ def test_press_j_batch_popular_initial_scroll(monkeypatch):
 
     assert worker._press_j_batch() is True
 
-    assert dummy.calls == [("press", "j")] * POPULAR_INITIAL_J_COUNT
-    assert ranges == []
+    assert dummy.calls == [("press", "j")] * initial_press_count
+    assert ranges == [POPULAR_INITIAL_J_RANGE]
 
     first_call_uniforms = uniform_calls.copy()
-    fast_count_first = min(2, POPULAR_INITIAL_J_COUNT)
+    fast_count_first = min(2, initial_press_count)
     assert first_call_uniforms[:fast_count_first] == [FAST_J_INITIAL_DELAY_RANGE] * fast_count_first
     assert all(r == (STEP_PAUSE_MIN, STEP_PAUSE_MAX) for r in first_call_uniforms[fast_count_first:])
 
