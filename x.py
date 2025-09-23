@@ -423,13 +423,31 @@ class PostEditor(tk.Toplevel):
         self.resizable(True, True)
         self.on_save = on_save
 
+        header = ttk.Frame(self)
+        header.pack(fill="x", padx=10, pady=(10, 0))
+        ttk.Label(header, text="Draft content:").pack(side="left")
+        ttk.Button(
+            header,
+            text="ℹ",
+            width=2,
+            command=self._show_editor_info,
+        ).pack(side="left", padx=(4, 0))
+
         self.txt = scrolledtext.ScrolledText(self, width=60, height=10)
-        self.txt.pack(fill="both", expand=True, padx=10, pady=10)
+        self.txt.pack(fill="both", expand=True, padx=10, pady=(6, 10))
         if initial_text:
             self.txt.insert("1.0", initial_text)
 
-        btn = ttk.Button(self, text="Save", command=self._save)
-        btn.pack(pady=(0, 10))
+        actions = ttk.Frame(self)
+        actions.pack(pady=(0, 10))
+        btn = ttk.Button(actions, text="Save", command=self._save)
+        btn.pack(side="left")
+        ttk.Button(
+            actions,
+            text="ℹ",
+            width=2,
+            command=self._show_save_info,
+        ).pack(side="left", padx=(4, 0))
 
         # Allow closing via window manager controls
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -447,6 +465,18 @@ class PostEditor(tk.Toplevel):
             else:
                 self.queue.push(content)
         self.destroy()
+
+    def _show_editor_info(self) -> None:
+        messagebox.showinfo(
+            "Draft content",
+            "Write or edit the post text that will be queued for manual review.",
+        )
+
+    def _show_save_info(self) -> None:
+        messagebox.showinfo(
+            "Save draft",
+            "Save the current text to the draft queue. You can edit it again from the Posts tab.",
+        )
 
 # ---- Worker (manual flow, no key simulation)
 class SchedulerWorker(threading.Thread):
@@ -997,10 +1027,23 @@ class App(tk.Tk):
             self.remaining = seconds
             self.on_done = on_done
             self.on_cancel = on_cancel
+            header = ttk.Frame(self)
+            header.pack(fill="x", padx=16, pady=(16, 0))
+            ttk.Label(header, text="Countdown:").pack(side="left")
+            ttk.Button(header, text="ℹ", width=2, command=self._show_info).pack(
+                side="left", padx=(4, 0)
+            )
+
             self.label = ttk.Label(self, text="", font=("TkDefaultFont", 24))
             self.label.pack(padx=20, pady=20)
-            btn = ttk.Button(self, text="Cancel", command=self.cancel)
-            btn.pack(pady=(0, 20))
+
+            actions = ttk.Frame(self)
+            actions.pack(pady=(0, 20))
+            btn = ttk.Button(actions, text="Cancel", command=self.cancel)
+            btn.pack(side="left")
+            ttk.Button(actions, text="ℹ", width=2, command=self._show_cancel_info).pack(
+                side="left", padx=(4, 0)
+            )
             self.protocol("WM_DELETE_WINDOW", self.cancel)
             self._tick()
 
@@ -1018,6 +1061,18 @@ class App(tk.Tk):
             if self.on_cancel:
                 self.on_cancel()
 
+        def _show_info(self):
+            messagebox.showinfo(
+                "Session countdown",
+                "The scheduler waits for a short countdown before starting the automated session.",
+            )
+
+        def _show_cancel_info(self):
+            messagebox.showinfo(
+                "Cancel countdown",
+                "Canceling stops the countdown and keeps the session from starting automatically.",
+            )
+
     class _RunMonitor(tk.Toplevel):
         def __init__(self, master: "App"):
             super().__init__(master)
@@ -1033,8 +1088,38 @@ class App(tk.Tk):
 
             header = ttk.Frame(self)
             header.pack(fill="x", padx=12, pady=(12, 6))
-            ttk.Label(header, textvariable=self.status_var).pack(side="left")
-            ttk.Label(header, textvariable=self.elapsed_var).pack(side="right")
+            status_frame = ttk.Frame(header)
+            status_frame.pack(side="left")
+            ttk.Label(status_frame, textvariable=self.status_var).pack(side="left")
+            self._info_button(
+                status_frame,
+                "Run status",
+                "Shows whether the session is currently running or paused.",
+                side="left",
+                padx=(4, 0),
+            )
+
+            elapsed_frame = ttk.Frame(header)
+            elapsed_frame.pack(side="right")
+            ttk.Label(elapsed_frame, textvariable=self.elapsed_var).pack(side="left")
+            self._info_button(
+                elapsed_frame,
+                "Elapsed time",
+                "Displays how long the session has been active.",
+                side="left",
+                padx=(4, 0),
+            )
+
+            log_header = ttk.Frame(self)
+            log_header.pack(fill="x", padx=12, pady=(0, 4))
+            ttk.Label(log_header, text="Recent activity:").pack(side="left")
+            self._info_button(
+                log_header,
+                "Run log",
+                "Real-time log entries from the scheduler while the session is active.",
+                side="left",
+                padx=(4, 0),
+            )
 
             self.log_text = scrolledtext.ScrolledText(
                 self, wrap="word", state="disabled", height=12
@@ -1044,19 +1129,55 @@ class App(tk.Tk):
             btns = ttk.Frame(self)
             btns.pack(fill="x", padx=12, pady=(0, 12))
 
-            self.btn_pause = ttk.Button(btns, text="Pause", command=self._on_pause)
+            pause_container = ttk.Frame(btns)
+            pause_container.pack(side="left")
+            self.btn_pause = ttk.Button(pause_container, text="Pause", command=self._on_pause)
             self.btn_pause.pack(side="left")
-
-            self.btn_resume = ttk.Button(
-                btns, text="Resume", command=self._on_resume, state="disabled"
+            self._info_button(
+                pause_container,
+                "Pause session",
+                "Temporarily pause the automation to take manual control.",
+                side="left",
+                padx=(4, 0),
             )
-            self.btn_resume.pack(side="left", padx=(6, 0))
 
-            self.btn_stop = ttk.Button(btns, text="Stop", command=self._on_stop)
-            self.btn_stop.pack(side="right")
+            resume_container = ttk.Frame(btns)
+            resume_container.pack(side="left", padx=(6, 0))
+            self.btn_resume = ttk.Button(
+                resume_container, text="Resume", command=self._on_resume, state="disabled"
+            )
+            self.btn_resume.pack(side="left")
+            self._info_button(
+                resume_container,
+                "Resume session",
+                "Resume the run after a pause to continue automated actions.",
+                side="left",
+                padx=(4, 0),
+            )
 
-            self.btn_copy = ttk.Button(btns, text="Copy logs", command=self._copy_logs)
-            self.btn_copy.pack(side="right", padx=(0, 6))
+            stop_container = ttk.Frame(btns)
+            stop_container.pack(side="right")
+            self.btn_stop = ttk.Button(stop_container, text="Stop", command=self._on_stop)
+            self.btn_stop.pack(side="left")
+            self._info_button(
+                stop_container,
+                "Stop session",
+                "Stop the automation immediately and end the current session.",
+                side="left",
+                padx=(4, 0),
+            )
+
+            copy_container = ttk.Frame(btns)
+            copy_container.pack(side="right", padx=(0, 6))
+            self.btn_copy = ttk.Button(copy_container, text="Copy logs", command=self._copy_logs)
+            self.btn_copy.pack(side="left")
+            self._info_button(
+                copy_container,
+                "Copy logs",
+                "Copy the current session log to the clipboard for record keeping.",
+                side="left",
+                padx=(4, 0),
+            )
 
             self.protocol("WM_DELETE_WINDOW", self._on_stop)
             self.bind("<Escape>", lambda *_: self._on_stop())
@@ -1064,6 +1185,11 @@ class App(tk.Tk):
             self.set_paused(False)
             self.after(200, self._update_elapsed)
             self.focus()
+
+        def _info_button(self, parent, title: str, message: str, **pack_kwargs):
+            btn = ttk.Button(parent, text="ℹ", width=2, command=lambda: messagebox.showinfo(title, message))
+            btn.pack(**pack_kwargs)
+            return btn
 
         def _on_pause(self):
             self.master.pause_clicked()
@@ -1128,7 +1254,7 @@ class App(tk.Tk):
         self.tab_review = ttk.Frame(self.nb)
         self.tab_log = ttk.Frame(self.nb)
 
-        self.nb.add(self.tab_settings, text="Nastavení")
+        self.nb.add(self.tab_settings, text="Settings")
         self.nb.add(self.tab_session, text="Session & Sleep")
         self.nb.add(self.tab_behavior, text="Humanization & Behavior")
         self.nb.add(self.tab_guardrails, text="Guardrails")
@@ -1149,48 +1275,265 @@ class App(tk.Tk):
         self._build_log_tab(self.tab_log)
 
         # bottom bar
-        bar = ttk.Frame(self); bar.pack(fill="x", padx=8, pady=6)
-        self.btn_start = ttk.Button(bar, text="Start", command=self.start_clicked)
-        self.btn_pause = ttk.Button(bar, text="Pause", command=self.pause_clicked, state="disabled")
-        self.btn_resume = ttk.Button(bar, text="Resume", command=self.resume_clicked, state="disabled")
-        self.btn_stop = ttk.Button(bar, text="Stop", command=self.stop_clicked, state="disabled")
-        self.lbl_status = ttk.Label(bar, text="Profil: —")
-        self.btn_start.pack(side="left")
-        self.btn_pause.pack(side="left", padx=8)
-        self.btn_resume.pack(side="left", padx=8)
-        self.btn_stop.pack(side="left", padx=8)
-        self.lbl_status.pack(side="right")
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8, pady=6)
+        self.btn_start = self._button_with_info(
+            bar,
+            text="Start",
+            command=self.start_clicked,
+            info=(
+                "Begin the automated session using the current configuration. "
+                "The run monitor opens and tracks the workflow."
+            ),
+            pack={"side": "left"},
+        )
+        self.btn_pause = self._button_with_info(
+            bar,
+            text="Pause",
+            command=self.pause_clicked,
+            info="Pause the active session. The automation waits until you resume.",
+            button_kwargs={"state": "disabled"},
+            pack={"side": "left", "padx": 8},
+        )
+        self.btn_resume = self._button_with_info(
+            bar,
+            text="Resume",
+            command=self.resume_clicked,
+            info="Resume a session that was paused manually or by the system.",
+            button_kwargs={"state": "disabled"},
+            pack={"side": "left", "padx": 8},
+        )
+        self.btn_stop = self._button_with_info(
+            bar,
+            text="Stop",
+            command=self.stop_clicked,
+            info="Stop the current session and release all scheduled work immediately.",
+            button_kwargs={"state": "disabled"},
+            pack={"side": "left", "padx": 8},
+        )
+        status_container = ttk.Frame(bar)
+        status_container.pack(side="right")
+        self.lbl_status = ttk.Label(status_container, text="Profile: —")
+        self.lbl_status.pack(side="left")
+        self._create_info_button(
+            status_container,
+            "Shows the active profile and whether the configuration has pending unsaved changes.",
+            title="Profile status",
+        ).pack(side="left", padx=(4, 0))
+
+    def _show_info_popup(self, title: str, message: str) -> None:
+        """Display a small modal window with explanatory copy."""
+
+        popup = tk.Toplevel(self)
+        popup.title(title)
+        popup.transient(self)
+        popup.resizable(False, False)
+        popup.protocol("WM_DELETE_WINDOW", popup.destroy)
+
+        frame = ttk.Frame(popup, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text=message, wraplength=360, justify="left").pack(
+            anchor="w", fill="x"
+        )
+        ttk.Button(frame, text="Close", command=popup.destroy).pack(anchor="e", pady=(12, 0))
+
+        popup.grab_set()
+        popup.focus_set()
+        popup.bind("<Escape>", lambda _event: popup.destroy())
+
+    def _create_info_button(
+        self,
+        parent: tk.Misc,
+        message: str,
+        *,
+        title: Optional[str] = None,
+    ) -> ttk.Button:
+        """Return a button that shows an informational pop-up when pressed."""
+
+        def _show():
+            self._show_info_popup(title or "Info", message)
+
+        return ttk.Button(parent, text="ℹ", width=2, command=_show)
+
+    def _button_with_info(
+        self,
+        parent: tk.Misc,
+        *,
+        text: str,
+        command,
+        info: str,
+        button_kwargs: Optional[Dict[str, Any]] = None,
+        pack: Optional[Dict[str, Any]] = None,
+        grid: Optional[Dict[str, Any]] = None,
+    ) -> ttk.Button:
+        """Create a button accompanied by an info icon."""
+
+        button_kwargs = button_kwargs or {}
+        container = ttk.Frame(parent)
+        btn = ttk.Button(container, text=text, command=command, **button_kwargs)
+        btn.pack(side="left")
+        self._create_info_button(container, info, title=text).pack(side="left", padx=(4, 0))
+        if pack is not None:
+            container.pack(**pack)
+        elif grid is not None:
+            container.grid(**grid)
+        return btn
+
+    def _grid_label_with_info(
+        self,
+        parent: tk.Misc,
+        text: str,
+        info: str,
+        *,
+        row: int,
+        column: int,
+        **grid_kwargs: Any,
+    ) -> ttk.Frame:
+        """Place a label with an info button using grid geometry."""
+
+        container = ttk.Frame(parent)
+        container.grid(row=row, column=column, **grid_kwargs)
+        ttk.Label(container, text=text).pack(side="left")
+        self._create_info_button(container, info, title=text).pack(side="left", padx=(4, 0))
+        return container
+
+    def _pack_label_with_info(
+        self,
+        parent: tk.Misc,
+        text: str,
+        info: str,
+        **pack_kwargs: Any,
+    ) -> ttk.Frame:
+        """Place a label with an info button using pack geometry."""
+
+        container = ttk.Frame(parent)
+        container.pack(**pack_kwargs)
+        ttk.Label(container, text=text).pack(side="left")
+        self._create_info_button(container, info, title=text).pack(side="left", padx=(4, 0))
+        return container
+
+    def _checkbutton_with_info(
+        self,
+        parent: tk.Misc,
+        *,
+        text: str,
+        variable: tk.Variable,
+        command,
+        info: str,
+        grid: Optional[Dict[str, Any]] = None,
+        pack: Optional[Dict[str, Any]] = None,
+    ) -> ttk.Checkbutton:
+        """Create a checkbutton alongside an info icon."""
+
+        container = ttk.Frame(parent)
+        chk = ttk.Checkbutton(container, text=text, variable=variable, command=command)
+        chk.pack(side="left")
+        self._create_info_button(container, info, title=text).pack(side="left", padx=(4, 0))
+        if grid is not None:
+            container.grid(**grid)
+        elif pack is not None:
+            container.pack(**pack)
+        return chk
 
     def _build_settings_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=12, pady=12)
 
-        ttk.Label(f, text="Vyber profil:").grid(row=0, column=0, sticky="w")
+        self._grid_label_with_info(
+            f,
+            "Select profile:",
+            "Choose which saved configuration profile to load or overwrite.",
+            row=0,
+            column=0,
+            sticky="w",
+        )
         self.var_profile = tk.StringVar()
         self.cmb_profile = ttk.Combobox(f, textvariable=self.var_profile, width=40,
                                         values=self._list_profiles(), state="readonly")
         self.cmb_profile.grid(row=0, column=1, sticky="w")
-        ttk.Button(f, text="Načíst", command=self.load_profile).grid(row=0, column=2, padx=6)
-        ttk.Button(f, text="Uložit", command=self.save_profile).grid(row=0, column=3, padx=6)
-        ttk.Button(f, text="Uložit jako…", command=self.save_profile_as).grid(row=0, column=4, padx=6)
+        self._button_with_info(
+            f,
+            text="Load",
+            command=self.load_profile,
+            info="Load the selected profile from disk and populate all fields with its values.",
+            grid={"row": 0, "column": 2, "padx": 6, "sticky": "w"},
+        )
+        self._button_with_info(
+            f,
+            text="Save",
+            command=self.save_profile,
+            info="Save the current configuration back to the chosen profile.",
+            grid={"row": 0, "column": 3, "padx": 6, "sticky": "w"},
+        )
+        self._button_with_info(
+            f,
+            text="Save As…",
+            command=self.save_profile_as,
+            info="Create a new profile file using the current configuration values.",
+            grid={"row": 0, "column": 4, "padx": 6, "sticky": "w"},
+        )
 
-        self.lbl_dirty = ttk.Label(f, text="", foreground="#b36b00")
-        self.lbl_dirty.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10,0))
+        dirty_frame = ttk.Frame(f)
+        dirty_frame.grid(row=1, column=0, columnspan=5, sticky="w", pady=(10, 0))
+        self.lbl_dirty = ttk.Label(dirty_frame, text="", foreground="#b36b00")
+        self.lbl_dirty.pack(side="left")
+        self._create_info_button(
+            dirty_frame,
+            "Highlights when changes have not been saved to the active profile yet.",
+            title="Unsaved changes",
+        ).pack(side="left", padx=(4, 0))
 
         llm_frame = ttk.LabelFrame(f, text="AI RSS summarisation")
         llm_frame.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
         llm_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(llm_frame, text="OpenAI API key:").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 2))
+        self._create_info_button(
+            llm_frame,
+            (
+                "Configure automated RSS drafting powered by the OpenAI API. "
+                "Provide credentials and persona guidance for generated posts."
+            ),
+            title="AI RSS summarisation",
+        ).grid(row=0, column=2, sticky="ne", padx=(0, 8), pady=(8, 0))
+
+        self._grid_label_with_info(
+            llm_frame,
+            "OpenAI API key:",
+            "Used for RSS summarisation via OpenAI. Leave blank to keep the workflow manual.",
+            row=0,
+            column=0,
+            sticky="w",
+            padx=8,
+            pady=(8, 2),
+        )
         entry_api = ttk.Entry(llm_frame, textvariable=self.var_openai_api_key, show="*", width=42)
         entry_api.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=(8, 2))
         entry_api.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
-        ttk.Label(llm_frame, text="Persona instructions:").grid(row=1, column=0, sticky="nw", padx=8, pady=(0, 6))
+        self._grid_label_with_info(
+            llm_frame,
+            "Persona instructions:",
+            "Optional guidance describing the tone and style for generated RSS drafts.",
+            row=1,
+            column=0,
+            sticky="nw",
+            padx=8,
+            pady=(0, 6),
+        )
         self.txt_rss_persona = scrolledtext.ScrolledText(llm_frame, height=4, wrap="word")
         self.txt_rss_persona.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 6))
         self.txt_rss_persona.bind("<<Modified>>", self._on_text_modified)
 
-        ttk.Label(llm_frame, text="Maximum length:").grid(row=2, column=0, sticky="w", padx=8, pady=(0, 8))
+        self._grid_label_with_info(
+            llm_frame,
+            "Maximum length:",
+            "Defines the maximum number of characters allowed in generated drafts.",
+            row=2,
+            column=0,
+            sticky="w",
+            padx=8,
+            pady=(0, 8),
+        )
         length_row = ttk.Frame(llm_frame)
         length_row.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=(0, 8))
         entry_length = ttk.Entry(length_row, textvariable=self.var_rss_max_length, width=6)
@@ -1198,25 +1541,53 @@ class App(tk.Tk):
         entry_length.bind("<KeyRelease>", lambda *_: self._mark_dirty())
         ttk.Label(length_row, text="characters").pack(side="left", padx=(4, 0))
 
-        ttk.Label(llm_frame, text="Leave API key blank to use the manual placeholder.").grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 8)
+        self._grid_label_with_info(
+            llm_frame,
+            "Leave the API key blank to use the manual placeholder.",
+            "Without a key the scheduler keeps RSS items queued but skips automatic summaries.",
+            row=3,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            padx=8,
+            pady=(0, 8),
         )
 
         # Search open policy (search filter now per section)
         row3 = ttk.LabelFrame(f, text="Search")
         row3.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(12,0))
-
+        row3.columnconfigure(1, weight=1)
+        self._create_info_button(
+            row3,
+            "Control how often the browser opens search tabs and how section filters map to X search URLs.",
+            title="Search settings",
+        ).grid(row=0, column=2, sticky="ne", padx=(0, 8), pady=(8, 0))
         self.var_open_policy = tk.StringVar(value="Once per step")
-        ttk.Label(row3, text="Open policy:").grid(row=0, column=0, sticky="w", padx=8)
+        self._grid_label_with_info(
+            row3,
+            "Open policy:",
+            "Determines how frequently a search tab is opened for each section during a session.",
+            row=0,
+            column=0,
+            sticky="w",
+            padx=8,
+        )
         cb2 = ttk.Combobox(row3, textvariable=self.var_open_policy, state="readonly",
                            values=["Every time","Once per step","Once per section"], width=18)
         cb2.grid(row=0, column=1, sticky="w", padx=(6,0))
         cb2.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
 
-        ttk.Label(row3, text=(
-            "Popular → &f=top; Latest → &f=live. Choose the search filter for each section in its tab. "
-            "Open policy controls how often a tab is opened."
-        )).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=(6,2))
+        self._grid_label_with_info(
+            row3,
+            "Popular → &f=top; Latest → &f=live. Choose the search filter for each section in its tab. Open policy controls how often a tab is opened.",
+            "Reference for how X search filters map to the scheduler's options and how often tabs are opened.",
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            padx=8,
+            pady=(6, 2),
+        )
 
         # Key binding: allow composing a new post via "N"
         root.bind("N", self._open_post_editor)
@@ -1238,84 +1609,225 @@ class App(tk.Tk):
 
     def _build_session_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
+        self._pack_label_with_info(
+            f,
+            "Session pacing settings:",
+            "Adjust how long the automation runs, how it cycles through steps, and when longer breaks occur.",
+            anchor="w",
+            pady=(0, 8),
+        )
         self.var_session_hours_min = tk.DoubleVar(value=12.0)
         self.var_session_hours_max = tk.DoubleVar(value=14.0)
-        self._pair(f, "Session hours (min/max)", self.var_session_hours_min, self.var_session_hours_max)
+        self._pair(
+            f,
+            "Session hours (min/max)",
+            self.var_session_hours_min,
+            self.var_session_hours_max,
+            info="Range of total hours the scheduler may run in a day before shutting down.",
+        )
 
         self.var_step_min = tk.IntVar(value=12)
         self.var_step_max = tk.IntVar(value=16)
-        self._pair(f, "Session step minutes (min/max)", self.var_step_min, self.var_step_max)
+        self._pair(
+            f,
+            "Session step minutes (min/max)",
+            self.var_step_min,
+            self.var_step_max,
+            info="Length of each active batch before the workflow pauses for a break.",
+        )
 
         self.var_break_min = tk.IntVar(value=2)
         self.var_break_max = tk.IntVar(value=4)
-        self._pair(f, "Session break minutes (min/max)", self.var_break_min, self.var_break_max)
+        self._pair(
+            f,
+            "Session break minutes (min/max)",
+            self.var_break_min,
+            self.var_break_max,
+            info="Duration of short breaks scheduled between session steps.",
+        )
 
         self.var_post_interval = tk.IntVar(value=0)
-        self._single(f, "Post interval minutes", self.var_post_interval)
+        self._single(
+            f,
+            "Post interval minutes",
+            self.var_post_interval,
+            info="Minutes between scheduled pauses for composing posts (0 disables automatic prompts).",
+        )
 
         self.var_sleep_start_h_min = tk.IntVar(value=22)
         self.var_sleep_start_h_max = tk.IntVar(value=24)
-        self._pair(f, "Night sleep start hour CET (min/max)", self.var_sleep_start_h_min, self.var_sleep_start_h_max)
+        self._pair(
+            f,
+            "Night sleep start hour CET (min/max)",
+            self.var_sleep_start_h_min,
+            self.var_sleep_start_h_max,
+            info="Hour range (CET) when the long overnight pause begins.",
+        )
 
         self.var_sleep_start_jitter_min = tk.IntVar(value=0)
         self.var_sleep_start_jitter_max = tk.IntVar(value=30)
-        self._pair(f, "Night sleep start minute jitter (min/max)", self.var_sleep_start_jitter_min, self.var_sleep_start_jitter_max)
+        self._pair(
+            f,
+            "Night sleep start minute jitter (min/max)",
+            self.var_sleep_start_jitter_min,
+            self.var_sleep_start_jitter_max,
+            info="Random minute offset applied to the night sleep start to avoid patterns.",
+        )
 
         self.var_sleep_hours_min = tk.DoubleVar(value=7.0)
         self.var_sleep_hours_max = tk.DoubleVar(value=8.0)
-        self._pair(f, "Night sleep hours (min/max)", self.var_sleep_hours_min, self.var_sleep_hours_max)
+        self._pair(
+            f,
+            "Night sleep hours (min/max)",
+            self.var_sleep_hours_min,
+            self.var_sleep_hours_max,
+            info="Length of the nightly downtime window the scheduler observes.",
+        )
 
         self.var_weekday_scale = tk.DoubleVar(value=1.0)
         self.var_weekend_scale = tk.DoubleVar(value=0.9)
-        self._single(f, "Weekday activity scale", self.var_weekday_scale)
-        self._single(f, "Weekend activity scale", self.var_weekend_scale)
+        self._single(
+            f,
+            "Weekday activity scale",
+            self.var_weekday_scale,
+            info="Multiplier applied to pacing during weekdays (1.0 keeps the default cadence).",
+        )
+        self._single(
+            f,
+            "Weekend activity scale",
+            self.var_weekend_scale,
+            info="Multiplier applied on weekends to slow down or speed up activity relative to weekdays.",
+        )
         self._bind_dirty(f)
 
     def _build_behavior_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
+        self._pack_label_with_info(
+            f,
+            "Behavior tuning settings:",
+            "Fine-tune pacing so the automation mimics natural typing and scrolling patterns.",
+            anchor="w",
+            pady=(0, 8),
+        )
         self.var_micro_every_min = tk.IntVar(value=8)
         self.var_micro_every_max = tk.IntVar(value=12)
-        self._pair(f, "Micro-pause every N actions (min/max)", self.var_micro_every_min, self.var_micro_every_max)
+        self._pair(
+            f,
+            "Micro-pause every N actions (min/max)",
+            self.var_micro_every_min,
+            self.var_micro_every_max,
+            info="Number of actions before inserting a short micro pause to vary cadence.",
+        )
 
         self.var_micro_s_min = tk.DoubleVar(value=2.0)
         self.var_micro_s_max = tk.DoubleVar(value=4.0)
-        self._pair(f, "Micro-pause seconds (min/max)", self.var_micro_s_min, self.var_micro_s_max)
+        self._pair(
+            f,
+            "Micro-pause seconds (min/max)",
+            self.var_micro_s_min,
+            self.var_micro_s_max,
+            info="Duration of each micro pause inserted into the action stream.",
+        )
 
         self.var_min_gap_s_min = tk.DoubleVar(value=0.4)
         self.var_min_gap_s_max = tk.DoubleVar(value=0.9)
-        self._pair(f, "Seconds between actions (min/max)", self.var_min_gap_s_min, self.var_min_gap_s_max)
+        self._pair(
+            f,
+            "Seconds between actions (min/max)",
+            self.var_min_gap_s_min,
+            self.var_min_gap_s_max,
+            info="Base delay between key presses and scroll events while active.",
+        )
 
         self.var_extra_jitter_prob = tk.DoubleVar(value=0.05)
         self.var_extra_jitter_s_min = tk.DoubleVar(value=1.0)
         self.var_extra_jitter_s_max = tk.DoubleVar(value=2.5)
-        self._single(f, "Extra jitter probability (0-1)", self.var_extra_jitter_prob)
-        self._pair(f, "Extra jitter seconds (min/max)", self.var_extra_jitter_s_min, self.var_extra_jitter_s_max)
+        self._single(
+            f,
+            "Extra jitter probability (0-1)",
+            self.var_extra_jitter_prob,
+            info="Chance of adding an additional random pause on top of normal timing.",
+        )
+        self._pair(
+            f,
+            "Extra jitter seconds (min/max)",
+            self.var_extra_jitter_s_min,
+            self.var_extra_jitter_s_max,
+            info="Range for the random pauses injected when the jitter probability triggers.",
+        )
 
         self._bind_dirty(f)
 
     def _build_guardrails_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
+        self._pack_label_with_info(
+            f,
+            "Guardrail settings:",
+            "Define safety limits and content filters that keep the workflow within policy boundaries.",
+            anchor="w",
+            pady=(0, 8),
+        )
 
         self.var_daily_cap_min = tk.IntVar(value=1150)
         self.var_daily_cap_max = tk.IntVar(value=1250)
-        self._pair(f, "Daily interaction cap (min/max)", self.var_daily_cap_min, self.var_daily_cap_max)
+        self._pair(
+            f,
+            "Daily interaction cap (min/max)",
+            self.var_daily_cap_min,
+            self.var_daily_cap_max,
+            info="Maximum number of interactions allowed per day before the session ends early.",
+        )
 
         self.var_hourly_cap_min = tk.IntVar(value=90)
         self.var_hourly_cap_max = tk.IntVar(value=110)
-        self._pair(f, "Hourly interaction cap (min/max)", self.var_hourly_cap_min, self.var_hourly_cap_max)
+        self._pair(
+            f,
+            "Hourly interaction cap (min/max)",
+            self.var_hourly_cap_min,
+            self.var_hourly_cap_max,
+            info="Upper bound on interactions per hour to avoid bursts of activity.",
+        )
 
         self.var_whitelist = tk.StringVar(value="")
         self.var_blacklist = tk.StringVar(value="")
-        self._single(f, "Whitelist keywords (comma-separated)", self.var_whitelist, width=70)
-        self._single(f, "Blacklist keywords (comma-separated)", self.var_blacklist, width=70)
+        self._single(
+            f,
+            "Whitelist keywords (comma-separated)",
+            self.var_whitelist,
+            width=70,
+            info="Replies are prioritised when tweets contain any of these keywords.",
+        )
+        self._single(
+            f,
+            "Blacklist keywords (comma-separated)",
+            self.var_blacklist,
+            width=70,
+            info="Tweets containing these keywords are skipped even if other filters match.",
+        )
 
         self.var_profanity = tk.StringVar(value="")
-        self._single(f, "Profanity list (comma-separated, lower-case)", self.var_profanity, width=70)
+        self._single(
+            f,
+            "Profanity list (comma-separated, lower-case)",
+            self.var_profanity,
+            width=70,
+            info="Words that should never appear in generated drafts.",
+        )
 
         self.var_similarity = tk.DoubleVar(value=0.90)
         self.var_unique_mem = tk.IntVar(value=200)
-        self._single(f, "Similarity threshold (0..1)", self.var_similarity)
-        self._single(f, "Uniqueness memory size", self.var_unique_mem)
+        self._single(
+            f,
+            "Similarity threshold (0..1)",
+            self.var_similarity,
+            info="Maximum allowed content similarity between consecutive replies (lower is stricter).",
+        )
+        self._single(
+            f,
+            "Uniqueness memory size",
+            self.var_unique_mem,
+            info="How many recent replies are remembered when checking for repeated content.",
+        )
         self._bind_dirty(f)
 
     def _build_sections_tab(self, root):
@@ -1323,10 +1835,20 @@ class App(tk.Tk):
         container = ttk.Frame(root)
         container.pack(fill="both", expand=True, padx=6, pady=6)
 
+        self._pack_label_with_info(
+            container,
+            "Manage reply sections:",
+            "Each section stores search queries, response pools, and pacing parameters.",
+            anchor="w",
+            pady=(0, 6),
+        )
+
         controls = ttk.Frame(container)
         controls.pack(fill="x", pady=(0, 6))
 
-        add_menu = ttk.Menubutton(controls, text="Add section")
+        add_container = ttk.Frame(controls)
+        add_container.pack(side="left")
+        add_menu = ttk.Menubutton(add_container, text="Add section")
         add_menu_menu = tk.Menu(add_menu, tearoff=False)
         add_menu_menu.add_command(label="Blank section", command=self._add_blank_section)
         if DEFAULT_SECTIONS_SEED:
@@ -1339,9 +1861,23 @@ class App(tk.Tk):
                 )
         add_menu["menu"] = add_menu_menu
         add_menu.pack(side="left")
+        self._create_info_button(
+            add_container,
+            "Add a new section using either a blank template or one of the saved presets.",
+            title="Add section",
+        ).pack(side="left", padx=(4, 0))
 
-        delete_btn = ttk.Button(controls, text="Delete current section", command=self._delete_current_section)
-        delete_btn.pack(side="left", padx=(6, 0))
+        delete_container = ttk.Frame(controls)
+        delete_container.pack(side="left", padx=(6, 0))
+        delete_btn = ttk.Button(
+            delete_container, text="Delete current section", command=self._delete_current_section
+        )
+        delete_btn.pack(side="left")
+        self._create_info_button(
+            delete_container,
+            "Remove the currently selected section tab from this profile.",
+            title="Delete section",
+        ).pack(side="left", padx=(4, 0))
         self.section_delete_button = delete_btn
 
         self.sections_notebook = ttk.Notebook(container)
@@ -1506,14 +2042,34 @@ class App(tk.Tk):
         header = ttk.Frame(col)
         header.pack(fill="x", pady=(0, 8))
         header.columnconfigure(1, weight=1)
-        ttk.Label(header, text="Section name:").grid(row=0, column=0, sticky="w")
+        self._grid_label_with_info(
+            header,
+            "Section name:",
+            "Display name for this section tab and for log output.",
+            row=0,
+            column=0,
+            sticky="w",
+        )
         entry_name = ttk.Entry(header, textvariable=name_var)
         entry_name.grid(row=0, column=1, sticky="ew", padx=(6, 0))
         entry_name.bind("<KeyRelease>", lambda *_: self._mark_dirty())
-        ttk.Checkbutton(header, text="Enabled", variable=enabled_var, command=self._mark_dirty).grid(
-            row=0, column=2, sticky="w", padx=(12, 0)
+        self._checkbutton_with_info(
+            header,
+            text="Enabled",
+            variable=enabled_var,
+            command=self._mark_dirty,
+            info="Toggle to include this section when running the scheduler.",
+            grid={"row": 0, "column": 2, "sticky": "w", "padx": (12, 0)},
         )
-        ttk.Label(header, text="Search filter:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self._grid_label_with_info(
+            header,
+            "Search filter:",
+            "Choose which X search mode (Popular or Latest) this section uses when opening tabs.",
+            row=1,
+            column=0,
+            sticky="w",
+            pady=(6, 0),
+        )
         mode_cb = ttk.Combobox(
             header,
             textvariable=mode_var,
@@ -1526,18 +2082,22 @@ class App(tk.Tk):
 
         controls = ttk.Frame(header)
         controls.grid(row=0, column=3, sticky="e", padx=(12, 0))
-        ttk.Button(
+        self._button_with_info(
             controls,
             text="↑",
-            width=2,
             command=lambda sv=sv: self._move_section_order(sv, -1),
-        ).pack(side="top")
-        ttk.Button(
+            info="Move this section earlier in the execution order.",
+            button_kwargs={"width": 2},
+            pack={"side": "top"},
+        )
+        self._button_with_info(
             controls,
             text="↓",
-            width=2,
             command=lambda sv=sv: self._move_section_order(sv, 1),
-        ).pack(side="top", pady=(2, 0))
+            info="Move this section later in the execution order.",
+            button_kwargs={"width": 2},
+            pack={"side": "top", "pady": (2, 0)},
+        )
 
         def update_tab_label(
             *_,
@@ -1554,17 +2114,47 @@ class App(tk.Tk):
         update_tab_label()
         name_var.trace_add("write", update_tab_label)
 
-        self._pair(col, "Typing ms/char (min/max)", v_typ_min, v_typ_max)
-        self._pair(col, "Max responses before switch (min/max)", v_resp_min, v_resp_max)
-        self._pair(col, "Seconds per query (min/max)", v_dur_min, v_dur_max)
+        self._pair(
+            col,
+            "Typing ms/char (min/max)",
+            v_typ_min,
+            v_typ_max,
+            info="Simulated typing speed range used when drafting replies in this section.",
+        )
+        self._pair(
+            col,
+            "Max responses before switch (min/max)",
+            v_resp_min,
+            v_resp_max,
+            info="Number of replies to send before rotating to the next search query.",
+        )
+        self._pair(
+            col,
+            "Seconds per query (min/max)",
+            v_dur_min,
+            v_dur_max,
+            info="Time budget for scanning results of each query before moving on.",
+        )
 
-        ttk.Label(col, text="Search queries (one per line):").pack(anchor="w", pady=(8, 2))
+        self._pack_label_with_info(
+            col,
+            "Search queries (one per line):",
+            "List of X search queries executed for this section (one per line).",
+            anchor="w",
+            pady=(8, 2),
+        )
         txt_q = scrolledtext.ScrolledText(col, height=6)
         if queries:
             txt_q.insert("1.0", "\n".join(queries))
         txt_q.pack(fill="both", expand=False)
 
-        ttk.Label(col, text="Responses (one per line):").pack(anchor="w", pady=(8, 2))
+        self._pack_label_with_info(
+            col,
+            "Responses (one per line):",
+            "Pool of reply snippets randomly selected when engaging with results in this section.",
+            anchor="w",
+            pady=(8, 2),
+        )
         txt_r = scrolledtext.ScrolledText(col, height=8)
         if responses:
             txt_r.insert("1.0", "\n".join(responses))
@@ -1680,8 +2270,27 @@ class App(tk.Tk):
         wrapper = ttk.Frame(root)
         wrapper.pack(fill="both", expand=True, padx=10, pady=10)
 
-        table_frame = ttk.Frame(wrapper)
+        self._pack_label_with_info(
+            wrapper,
+            "RSS review queue:",
+            "Inspect fetched stories, generate drafts, and manage processing status.",
+            anchor="w",
+            pady=(0, 8),
+        )
+
+        content = ttk.Frame(wrapper)
+        content.pack(fill="both", expand=True)
+
+        table_frame = ttk.Frame(content)
         table_frame.pack(side="left", fill="both", expand=True)
+
+        self._pack_label_with_info(
+            table_frame,
+            "Fetched RSS items:",
+            "Stories pulled from configured feeds. Double-click an item to draft a post.",
+            anchor="w",
+            pady=(0, 4),
+        )
 
         columns = ("status", "title", "summary", "source", "published")
         self.news_tree = ttk.Treeview(
@@ -1707,19 +2316,43 @@ class App(tk.Tk):
         self.news_tree.configure(yscrollcommand=scroll.set)
         self.news_tree.bind("<Double-Button-1>", lambda *_: self._news_generate_draft())
 
-        btns = ttk.Frame(wrapper)
+        btns = ttk.Frame(content)
         btns.pack(side="left", fill="y", padx=(10, 0))
-        ttk.Button(btns, text="Generate draft", command=self._news_generate_draft).pack(fill="x")
-        ttk.Button(btns, text="Mark processed", command=lambda: self._news_mark_status("processed")).pack(
-            fill="x", pady=(8, 0)
+        self._button_with_info(
+            btns,
+            text="Generate draft",
+            command=self._news_generate_draft,
+            info="Create a new post draft from the selected RSS item.",
+            pack={"fill": "x"},
         )
-        ttk.Button(btns, text="Ignore", command=lambda: self._news_mark_status("ignored")).pack(
-            fill="x", pady=(4, 0)
+        self._button_with_info(
+            btns,
+            text="Mark processed",
+            command=lambda: self._news_mark_status("processed"),
+            info="Mark the selected item as processed so it no longer appears as new.",
+            pack={"fill": "x", "pady": (8, 0)},
         )
-        ttk.Button(btns, text="Reset status", command=lambda: self._news_mark_status("new")).pack(
-            fill="x", pady=(12, 0)
+        self._button_with_info(
+            btns,
+            text="Ignore",
+            command=lambda: self._news_mark_status("ignored"),
+            info="Flag the item as ignored without generating a draft.",
+            pack={"fill": "x", "pady": (4, 0)},
         )
-        ttk.Button(btns, text="Refresh", command=self._refresh_news_items).pack(fill="x", pady=(24, 0))
+        self._button_with_info(
+            btns,
+            text="Reset status",
+            command=lambda: self._news_mark_status("new"),
+            info="Return the item to the new state for reconsideration later.",
+            pack={"fill": "x", "pady": (12, 0)},
+        )
+        self._button_with_info(
+            btns,
+            text="Refresh",
+            command=self._refresh_news_items,
+            info="Reload the RSS items from the library without fetching new feeds.",
+            pack={"fill": "x", "pady": (24, 0)},
+        )
 
         self._refresh_news_items()
 
@@ -1862,29 +2495,76 @@ class App(tk.Tk):
         f = ttk.Frame(root)
         f.pack(fill="both", expand=True, padx=10, pady=10)
 
+        self._pack_label_with_info(
+            f,
+            "Post drafts and RSS ingestion:",
+            "Manage drafts generated from RSS feeds or composed manually before posting.",
+            anchor="w",
+            pady=(0, 8),
+        )
+
         rss_frame = ttk.LabelFrame(f, text="RSS ingestion")
         rss_frame.pack(fill="x", pady=(0, 12))
         rss_frame.columnconfigure(1, weight=1)
+        self._create_info_button(
+            rss_frame,
+            "Configure how RSS feeds are ingested to produce draft posts automatically.",
+            title="RSS ingestion",
+        ).grid(row=0, column=2, sticky="ne", padx=(0, 8), pady=(8, 0))
 
-        ttk.Label(rss_frame, text="Feed URLs (comma-separated):").grid(row=0, column=0, sticky="w")
+        self._grid_label_with_info(
+            rss_frame,
+            "Feed URLs (comma-separated):",
+            "Comma-separated list of RSS feeds that the scheduler polls for new stories.",
+            row=0,
+            column=0,
+            sticky="w",
+        )
         entry_feeds = ttk.Entry(rss_frame, textvariable=self.var_rss_feeds)
         entry_feeds.grid(row=0, column=1, sticky="ew", padx=(6, 0))
         entry_feeds.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
-        ttk.Label(rss_frame, text="Fetch interval (minutes):").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self._grid_label_with_info(
+            rss_frame,
+            "Fetch interval (minutes):",
+            "Minutes between RSS polling runs when feeds are enabled.",
+            row=1,
+            column=0,
+            sticky="w",
+            pady=(6, 0),
+        )
         entry_interval = ttk.Entry(rss_frame, textvariable=self.var_rss_interval_minutes, width=10)
         entry_interval.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
         entry_interval.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
-        ttk.Label(rss_frame, textvariable=self.rss_last_fetch_var).grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=(8, 0)
-        )
-        ttk.Label(rss_frame, textvariable=self.rss_next_fetch_var).grid(
-            row=3, column=0, columnspan=2, sticky="w"
-        )
+        last_frame = ttk.Frame(rss_frame)
+        last_frame.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(last_frame, textvariable=self.rss_last_fetch_var).pack(side="left")
+        self._create_info_button(
+            last_frame,
+            "Displays when the RSS ingestor last completed a polling cycle.",
+            title="Last fetch",
+        ).pack(side="left", padx=(4, 0))
+
+        next_frame = ttk.Frame(rss_frame)
+        next_frame.grid(row=3, column=0, columnspan=2, sticky="w")
+        ttk.Label(next_frame, textvariable=self.rss_next_fetch_var).pack(side="left")
+        self._create_info_button(
+            next_frame,
+            "Shows when the next RSS poll is scheduled, including disabled/paused states.",
+            title="Next fetch",
+        ).pack(side="left", padx=(4, 0))
 
         list_frame = ttk.Frame(f)
         list_frame.pack(side="left", fill="both", expand=True)
+
+        self._pack_label_with_info(
+            list_frame,
+            "Draft queue:",
+            "Generated and manual drafts waiting to be reviewed or published.",
+            anchor="w",
+            pady=(0, 4),
+        )
 
         columns = ("status", "source", "created", "preview")
         self.posts_tree = ttk.Treeview(
@@ -1910,11 +2590,41 @@ class App(tk.Tk):
 
         btns = ttk.Frame(f)
         btns.pack(side="left", fill="y", padx=(10, 0))
-        ttk.Button(btns, text="Compose…", command=self._compose_post).pack(fill="x")
-        ttk.Button(btns, text="Open draft", command=self._open_selected_draft).pack(fill="x", pady=(4, 0))
-        ttk.Button(btns, text="Mark used", command=lambda: self._mark_selected_draft("used")).pack(fill="x", pady=(12, 0))
-        ttk.Button(btns, text="Archive", command=lambda: self._mark_selected_draft("archived")).pack(fill="x", pady=(4, 0))
-        ttk.Button(btns, text="Delete", command=self._delete_post).pack(fill="x", pady=(12, 0))
+        self._button_with_info(
+            btns,
+            text="Compose…",
+            command=self._compose_post,
+            info="Open the post editor to write a new draft manually.",
+            pack={"fill": "x"},
+        )
+        self._button_with_info(
+            btns,
+            text="Open draft",
+            command=self._open_selected_draft,
+            info="Review and edit the highlighted draft in the composer.",
+            pack={"fill": "x", "pady": (4, 0)},
+        )
+        self._button_with_info(
+            btns,
+            text="Mark used",
+            command=lambda: self._mark_selected_draft("used"),
+            info="Mark the selected draft as used so it won't be suggested again automatically.",
+            pack={"fill": "x", "pady": (12, 0)},
+        )
+        self._button_with_info(
+            btns,
+            text="Archive",
+            command=lambda: self._mark_selected_draft("archived"),
+            info="Move the selected draft to the archive for later reference.",
+            pack={"fill": "x", "pady": (4, 0)},
+        )
+        self._button_with_info(
+            btns,
+            text="Delete",
+            command=self._delete_post,
+            info="Permanently delete the selected draft from the library.",
+            pack={"fill": "x", "pady": (12, 0)},
+        )
 
         self._refresh_posts()
 
@@ -2109,15 +2819,56 @@ class App(tk.Tk):
 
     def _build_review_tab(self, root):
         f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
+        self._pack_label_with_info(
+            f,
+            "Transparency options:",
+            "Configure whether copied replies include a disclosure tag.",
+            anchor="w",
+            pady=(0, 8),
+        )
         self.var_transparency = tk.BooleanVar(value=False)
         self.var_transparency_text = tk.StringVar(value="— managed account")
-        ttk.Checkbutton(f, text="Enable transparency tag", variable=self.var_transparency, command=self._mark_dirty).grid(row=0, column=0, sticky="w", pady=(2,2))
-        ttk.Entry(f, textvariable=self.var_transparency_text, width=48).grid(row=0, column=1, sticky="w", pady=(2,2))
-        ttk.Label(f, text="(Tag is appended to replies you copy; actions are manual.)").grid(row=1, column=0, columnspan=2, sticky="w")
+        self._checkbutton_with_info(
+            f,
+            text="Enable transparency tag",
+            variable=self.var_transparency,
+            command=self._mark_dirty,
+            info="Append a disclosure tag when copying replies from the app.",
+            grid={"row": 0, "column": 0, "columnspan": 2, "sticky": "w", "pady": (2, 2)},
+        )
+        self._grid_label_with_info(
+            f,
+            "Tag text:",
+            "Text appended to replies when the transparency tag is enabled.",
+            row=1,
+            column=0,
+            sticky="w",
+            pady=(2, 2),
+        )
+        ttk.Entry(f, textvariable=self.var_transparency_text, width=48).grid(
+            row=1, column=1, sticky="w", pady=(2, 2)
+        )
+        self._grid_label_with_info(
+            f,
+            "(Tag is appended to replies you copy; actions are manual.)",
+            "Reminder that the app only prepares drafts; posting remains manual.",
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="w",
+        )
 
     def _build_log_tab(self, root):
+        self._pack_label_with_info(
+            root,
+            "Session logs:",
+            "Live log output from the scheduler. Use Copy in the run monitor to export entries.",
+            anchor="w",
+            padx=8,
+            pady=(8, 0),
+        )
         self.log_text = scrolledtext.ScrolledText(root, state="disabled", wrap="word")
-        self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self.log_text.pack(fill="both", expand=True, padx=8, pady=(4, 8))
 
     def _open_run_monitor(self):
         self._close_run_monitor()
@@ -2156,18 +2907,31 @@ class App(tk.Tk):
         self.worker = None
 
     # UI helpers
-    def _single(self, parent, label, var, width=20):
-        row = ttk.Frame(parent); row.pack(fill="x", pady=2)
-        ttk.Label(row, text=label, width=32).pack(side="left")
+    def _single(self, parent, label, var, width=20, info: Optional[str] = None):
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=2)
+        label_frame = ttk.Frame(row)
+        label_frame.pack(side="left")
+        ttk.Label(label_frame, text=label, width=32).pack(side="left")
+        if info:
+            self._create_info_button(label_frame, info, title=label).pack(side="left", padx=(4, 0))
         e = ttk.Entry(row, textvariable=var, width=width)
-        e.pack(side="left"); e.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+        e.pack(side="left")
+        e.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
-    def _pair(self, parent, label, var_min, var_max):
-        row = ttk.Frame(parent); row.pack(fill="x", pady=2)
-        ttk.Label(row, text=label, width=32).pack(side="left")
-        e1 = ttk.Entry(row, textvariable=var_min, width=10); e1.pack(side="left")
+    def _pair(self, parent, label, var_min, var_max, info: Optional[str] = None):
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=2)
+        label_frame = ttk.Frame(row)
+        label_frame.pack(side="left")
+        ttk.Label(label_frame, text=label, width=32).pack(side="left")
+        if info:
+            self._create_info_button(label_frame, info, title=label).pack(side="left", padx=(4, 0))
+        e1 = ttk.Entry(row, textvariable=var_min, width=10)
+        e1.pack(side="left")
         ttk.Label(row, text=" to ").pack(side="left")
-        e2 = ttk.Entry(row, textvariable=var_max, width=10); e2.pack(side="left")
+        e2 = ttk.Entry(row, textvariable=var_max, width=10)
+        e2.pack(side="left")
         e1.bind("<KeyRelease>", lambda *_: self._mark_dirty())
         e2.bind("<KeyRelease>", lambda *_: self._mark_dirty())
 
@@ -2269,9 +3033,9 @@ class App(tk.Tk):
     def _mark_dirty(self, *args):
         self.dirty = True
         if hasattr(self, "lbl_dirty"):
-            self.lbl_dirty.configure(text="(neuloženo)")
+            self.lbl_dirty.configure(text="(unsaved changes)")
         if self.current_profile:
-            self.lbl_status.configure(text=f"Profil: {self.current_profile} (neuloženo)")
+            self.lbl_status.configure(text=f"Profile: {self.current_profile} (unsaved)")
 
     # Start/Stop
     def start_clicked(self):
@@ -2718,7 +3482,7 @@ class App(tk.Tk):
         self.dirty = False
         self.lbl_dirty.configure(text="")
         if self.current_profile:
-            self.lbl_status.configure(text=f"Profil: {self.current_profile}")
+            self.lbl_status.configure(text=f"Profile: {self.current_profile}")
 
     # Profiles
     def _profiles_glob(self) -> List[str]:
@@ -2758,13 +3522,16 @@ class App(tk.Tk):
             self.current_profile = name
             self._apply_profile_dict(data)
             self.cmb_profile.configure(values=self._list_profiles())
-            self.lbl_status.configure(text=f"Profil: {self.current_profile}")
+            self.lbl_status.configure(text=f"Profile: {self.current_profile}")
         except FileNotFoundError:
-            messagebox.showwarning("Nenalezeno", f"Soubor profilu {path} neexistuje. Vytvářím nový.")
+            messagebox.showwarning(
+                "Profile not found",
+                f"Profile file {path} was not found. Creating a new one.",
+            )
             self.current_profile = name
             self.save_profile()
         except Exception as e:
-            messagebox.showerror("Chyba při načítání", str(e))
+            messagebox.showerror("Load error", str(e))
 
     def save_profile(self):
         if not self.current_profile:
@@ -2777,18 +3544,25 @@ class App(tk.Tk):
             self.dirty = False
             if hasattr(self, "lbl_dirty"):
                 self.lbl_dirty.configure(text="")
-            self.lbl_status.configure(text=f"Profil: {self.current_profile}")
+            self.lbl_status.configure(text=f"Profile: {self.current_profile}")
             self.cmb_profile.configure(values=self._list_profiles())
-            messagebox.showinfo("Uloženo", f"Profil uložen: {self.current_profile}")
+            messagebox.showinfo("Saved", f"Profile saved: {self.current_profile}")
         except Exception as e:
-            messagebox.showerror("Chyba při ukládání", str(e))
+            messagebox.showerror("Save error", str(e))
 
     def save_profile_as(self):
-        name = simpledialog.askstring("Uložit jako…", "Zadej název nového profilu (bez přípony):", parent=self)
+        name = simpledialog.askstring(
+            "Save As…",
+            "Enter a name for the new profile (without extension):",
+            parent=self,
+        )
         if not name: return
         name = "".join(ch for ch in name if ch.isalnum() or ch in "-_ ").strip()
         if not name:
-            messagebox.showerror("Neplatný název", "Zadej smysluplný název (písmena/čísla/-/_).")
+            messagebox.showerror(
+                "Invalid name",
+                "Enter a descriptive name using letters, numbers, hyphen, or underscore.",
+            )
             return
         self.current_profile = name
         self.var_profile.set(name)
