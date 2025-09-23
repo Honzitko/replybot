@@ -1,4 +1,6 @@
+
 """Utilities and command line helper for the Windows Quick Launch bar.
+
 
 The functions in this module generate Windows shell shortcuts (``.lnk`` files)
 so that the desktop application can be launched from the Quick Launch area of
@@ -11,9 +13,11 @@ The module also exposes :func:`main`, a small CLI that can be invoked with
 ``python -m quick_launch`` or packaged with ``pyinstaller`` to create a
 stand-alone executable for end users who prefer a double-click utility for
 installing the shortcut.
+
 """
 
 from __future__ import annotations
+
 
 import argparse
 import os
@@ -29,6 +33,7 @@ __all__ = [
     "main",
     "resolve_quick_launch_dir",
 ]
+
 
 
 class QuickLaunchError(RuntimeError):
@@ -212,6 +217,7 @@ def create_quick_launch_icon(
     return link_path
 
 
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     """Return the argument parser used by :func:`main`."""
 
@@ -278,3 +284,4 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -93,6 +93,7 @@ def test_create_quick_launch_icon_invokes_powershell(monkeypatch, tmp_path):
     assert recorded["check"] is False
 
 
+
 def test_main_creates_shortcut(monkeypatch, tmp_path, capsys):
     recorded = {}
 
@@ -146,3 +147,4 @@ def test_main_reports_error(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "Failed to create Quick Launch shortcut" in captured.err
+
