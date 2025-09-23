@@ -101,7 +101,9 @@ FAST_J_INITIAL_DELAY_RANGE = (0.0, 0.05)
 # by sending an initial burst of ``j`` presses.  Using a small random range of
 # presses avoids the mechanical feel of a fixed count while still ensuring we
 # scroll past the top-of-feed clutter.
+
 POPULAR_INITIAL_J_RANGE = (14, 17)
+
 
 
 POPULAR_SEARCH_MODES: Set[str] = {"popular", "top"}
