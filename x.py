@@ -2850,41 +2850,51 @@ class App(tk.Tk):
         self._apply_rss_status(None, None, paused=False)
 
     def _build_review_tab(self, root):
-        f = ttk.Frame(root); f.pack(fill="both", expand=True, padx=10, pady=10)
-        self._pack_label_with_info(
+        f = ttk.Frame(root)
+        f.pack(fill="both", expand=True, padx=10, pady=10)
+        f.columnconfigure(1, weight=1)
+
+        self._grid_label_with_info(
             f,
             "Transparency options:",
             "Configure whether copied replies include a disclosure tag.",
-            anchor="w",
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="w",
             pady=(0, 8),
         )
+
         self.var_transparency = tk.BooleanVar(value=False)
         self.var_transparency_text = tk.StringVar(value="— managed account")
+
         self._checkbutton_with_info(
             f,
             text="Enable transparency tag",
             variable=self.var_transparency,
             command=self._mark_dirty,
             info="Append a disclosure tag when copying replies from the app.",
-            grid={"row": 0, "column": 0, "columnspan": 2, "sticky": "w", "pady": (2, 2)},
+            grid={"row": 1, "column": 0, "columnspan": 2, "sticky": "w", "pady": (2, 2)},
         )
+
         self._grid_label_with_info(
             f,
             "Tag text:",
             "Text appended to replies when the transparency tag is enabled.",
-            row=1,
+            row=2,
             column=0,
             sticky="w",
             pady=(2, 2),
         )
         ttk.Entry(f, textvariable=self.var_transparency_text, width=48).grid(
-            row=1, column=1, sticky="w", pady=(2, 2)
+            row=2, column=1, sticky="ew", pady=(2, 2)
         )
+
         self._grid_label_with_info(
             f,
             "(Tag is appended to replies you copy; actions are manual.)",
             "Reminder that the app only prepares drafts; posting remains manual.",
-            row=2,
+            row=3,
             column=0,
             columnspan=2,
             sticky="w",
