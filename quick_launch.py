@@ -1,4 +1,6 @@
-"""Utilities for integrating ReplyBot with the Windows Quick Launch bar.
+
+"""Utilities and command line helper for the Windows Quick Launch bar.
+
 
 The functions in this module generate Windows shell shortcuts (``.lnk`` files)
 so that the desktop application can be launched from the Quick Launch area of
@@ -6,17 +8,32 @@ Windows taskbars.  The implementation intentionally avoids pywin32
 dependencies; instead it shells out to PowerShell which is available on
 supported Windows versions.  The PowerShell invocation is structured in a way
 that makes the behaviour straightforward to test on non-Windows platforms.
+
+The module also exposes :func:`main`, a small CLI that can be invoked with
+``python -m quick_launch`` or packaged with ``pyinstaller`` to create a
+stand-alone executable for end users who prefer a double-click utility for
+installing the shortcut.
+
 """
 
 from __future__ import annotations
 
+
+import argparse
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
-__all__ = ["QuickLaunchError", "create_quick_launch_icon", "resolve_quick_launch_dir"]
+__all__ = [
+    "QuickLaunchError",
+    "create_quick_launch_icon",
+    "main",
+    "resolve_quick_launch_dir",
+]
+
 
 
 class QuickLaunchError(RuntimeError):
@@ -198,3 +215,73 @@ def create_quick_launch_icon(
     ]
     _run_powershell(command)
     return link_path
+
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Return the argument parser used by :func:`main`."""
+
+    parser = argparse.ArgumentParser(
+        prog="quick_launch",
+        description="Create a Windows Quick Launch shortcut for ReplyBot or any executable.",
+    )
+    parser.add_argument(
+        "target",
+        help="Path to the executable that should be launched when the shortcut is used.",
+    )
+    parser.add_argument(
+        "--name",
+        default="ReplyBot",
+        help="Label to display for the shortcut (defaults to ReplyBot).",
+    )
+    parser.add_argument(
+        "--arguments",
+        help="Optional command line arguments that should be passed to the executable when launched.",
+    )
+    parser.add_argument(
+        "--description",
+        help="Optional descriptive text shown in the shortcut properties dialog.",
+    )
+    parser.add_argument(
+        "--working-dir",
+        help="Optional working directory used when the shortcut launches the executable.",
+    )
+    parser.add_argument(
+        "--icon",
+        dest="icon_path",
+        help="Path to a .ico file used as the shortcut icon.",
+    )
+    parser.add_argument(
+        "--quick-launch-dir",
+        help="Override the Quick Launch directory (defaults to the user's Quick Launch folder).",
+    )
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Command line entry point used by ``python -m quick_launch``."""
+
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        link_path = create_quick_launch_icon(
+            args.target,
+            name=args.name,
+            arguments=args.arguments,
+            description=args.description,
+            working_dir=args.working_dir,
+            icon_path=args.icon_path,
+            quick_launch_dir=args.quick_launch_dir,
+        )
+    except QuickLaunchError as exc:
+        print(f"Failed to create Quick Launch shortcut: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Created Quick Launch shortcut at {link_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

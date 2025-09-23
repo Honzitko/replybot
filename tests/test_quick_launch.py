@@ -91,3 +91,60 @@ def test_create_quick_launch_icon_invokes_powershell(monkeypatch, tmp_path):
     assert recorded["capture_output"] is True
     assert recorded["text"] is True
     assert recorded["check"] is False
+
+
+
+def test_main_creates_shortcut(monkeypatch, tmp_path, capsys):
+    recorded = {}
+
+    def fake_run(cmd, capture_output, text, check):
+        recorded["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(quick_launch, "_is_windows", lambda: True)
+    monkeypatch.setenv("REPLYBOT_QUICK_LAUNCH_DIR", str(tmp_path))
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    target_dir = tmp_path / "ReplyBot"
+    target_dir.mkdir()
+    target = target_dir / "replybot.exe"
+    target.write_bytes(b"")
+    icon = tmp_path / "replybot.ico"
+    icon.write_bytes(b"")
+
+    exit_code = quick_launch.main(
+        [
+            str(target),
+            "--name",
+            "ReplyBot CLI",
+            "--arguments",
+            "--log-level debug",
+            "--icon",
+            str(icon),
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    expected_link = tmp_path / "ReplyBot CLI.lnk"
+    assert str(expected_link) in captured.out
+    assert captured.err == ""
+
+    cmd = recorded["cmd"]
+    assert cmd[-2] == "-Command"
+    script = cmd[-1]
+    assert str(target) in script
+    assert "--log-level debug" in script
+    assert str(icon) in script
+
+
+def test_main_reports_error(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(quick_launch, "_is_windows", lambda: False)
+
+    exit_code = quick_launch.main([str(tmp_path / "replybot.exe")])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Failed to create Quick Launch shortcut" in captured.err
+
