@@ -154,13 +154,41 @@ def build_search_url(query: str, mode: str) -> str:
 
     return url
 
+DEFAULT_SECONDS_PER_QUERY_RANGE: Tuple[float, float] = (90.0, 150.0)
+DEFAULT_MINUTES_PER_QUERY_RANGE: Tuple[float, float] = (
+    DEFAULT_SECONDS_PER_QUERY_RANGE[0] / 60.0,
+    DEFAULT_SECONDS_PER_QUERY_RANGE[1] / 60.0,
+)
+
+
+def _coerce_float_pair(value: Any, fallback: Tuple[float, float]) -> Tuple[float, float]:
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            low = float(value[0])
+            high = float(value[1])
+        except Exception:
+            return fallback
+        if high < low:
+            low, high = high, low
+        return low, high
+    return fallback
+
+
+def coerce_minutes_range(value: Any) -> Tuple[float, float]:
+    return _coerce_float_pair(value, DEFAULT_MINUTES_PER_QUERY_RANGE)
+
+
+def seconds_range_to_minutes(value: Any) -> Tuple[float, float]:
+    low, high = _coerce_float_pair(value, DEFAULT_SECONDS_PER_QUERY_RANGE)
+    return low / 60.0, high / 60.0
+
 # ---- Section model
 @dataclass
 class Section:
     name: str
     typing_ms_per_char: Tuple[int, int] = (220, 240)
     max_responses_before_switch: Tuple[int, int] = (4, 8)
-    seconds_per_query_range: Tuple[int, int] = (90, 150)
+    minutes_per_query_range: Tuple[float, float] = DEFAULT_MINUTES_PER_QUERY_RANGE
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
     search_mode: str = "popular"
@@ -171,16 +199,16 @@ class Section:
     def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
     def pick_query_duration(self) -> float:
         try:
-            low, high = self.seconds_per_query_range
+            low, high = self.minutes_per_query_range
             low = float(low)
             high = float(high)
         except Exception:
-            low, high = 90.0, 150.0
+            low, high = DEFAULT_MINUTES_PER_QUERY_RANGE
         if high < low:
             low, high = high, low
-        low = max(1.0, low)
+        low = max(1.0 / 60.0, low)
         high = max(low, high)
-        return random.uniform(low, high)
+        return random.uniform(low, high) * 60.0
     def pick_query(self) -> Optional[str]:
         if not self.search_queries:
             return None
@@ -197,7 +225,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (6, 12),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "morning performance",
             "industry trends",
@@ -214,7 +242,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 9),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "client progress",
             "feature rollouts",
@@ -230,7 +258,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 10),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "roadmap items",
             "dev insights",
@@ -246,7 +274,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (4, 8),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "partner announcements",
             "collab opportunities",
@@ -262,7 +290,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 9),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "team shoutouts",
         ],
@@ -277,7 +305,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (6, 12),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "status check",
             "backlog review",
@@ -293,7 +321,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 260),
         "max_responses_before_switch": (3, 6),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "light topics",
             "community notes",
@@ -309,7 +337,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 260),
         "max_responses_before_switch": (4, 8),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "market notes",
             "customer wins",
@@ -325,7 +353,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (7, 13),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "quick scans",
         ],
@@ -340,7 +368,7 @@ DEFAULT_SECTIONS_SEED = [
         "enabled": True,
         "typing_ms_per_char": (220, 240),
         "max_responses_before_switch": (5, 10),
-        "seconds_per_query_range": (90, 150),
+        "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "brand mentions",
             "community threads",
@@ -1899,11 +1927,19 @@ class App(tk.Tk):
             "enabled": True,
             "typing_ms_per_char": (220, 240),
             "max_responses_before_switch": (4, 8),
-            "seconds_per_query_range": (90, 150),
+            "minutes_per_query_range": (1.5, 2.5),
             "search_queries": [],
             "responses": [],
             "search_mode": "popular",
         }
+
+    def _seed_minutes_range(self, seed: Dict[str, Any]) -> Tuple[float, float]:
+        if isinstance(seed, dict):
+            if "minutes_per_query_range" in seed:
+                return coerce_minutes_range(seed["minutes_per_query_range"])
+            if "seconds_per_query_range" in seed:
+                return seconds_range_to_minutes(seed["seconds_per_query_range"])
+        return DEFAULT_MINUTES_PER_QUERY_RANGE
 
     def _add_blank_section(self) -> None:
         self._add_section_from_seed(self._new_section_seed())
@@ -1918,8 +1954,9 @@ class App(tk.Tk):
             base["typing_ms_per_char"] = (220, 240)
         if "max_responses_before_switch" not in base:
             base["max_responses_before_switch"] = (4, 8)
-        if "seconds_per_query_range" not in base:
-            base["seconds_per_query_range"] = (90, 150)
+        minutes_range = self._seed_minutes_range(base)
+        base["minutes_per_query_range"] = minutes_range
+        base.pop("seconds_per_query_range", None)
         if "search_queries" not in base:
             base["search_queries"] = []
         if "responses" not in base:
@@ -1959,14 +1996,7 @@ class App(tk.Tk):
         except Exception:
             resp_min_val, resp_max_val = 4, 8
 
-        dur_rng = seed.get("seconds_per_query_range", (90, 150))
-        if not isinstance(dur_rng, (list, tuple)) or len(dur_rng) != 2:
-            dur_rng = (90, 150)
-        try:
-            dur_min_val = int(dur_rng[0])
-            dur_max_val = int(dur_rng[1])
-        except Exception:
-            dur_min_val, dur_max_val = 90, 150
+        dur_min_val, dur_max_val = self._seed_minutes_range(seed)
 
         raw_queries = seed.get("search_queries", [])
         if isinstance(raw_queries, str):
@@ -2009,8 +2039,8 @@ class App(tk.Tk):
         v_typ_max = tk.IntVar(value=typ_max_val)
         v_resp_min = tk.IntVar(value=resp_min_val)
         v_resp_max = tk.IntVar(value=resp_max_val)
-        v_dur_min = tk.IntVar(value=dur_min_val)
-        v_dur_max = tk.IntVar(value=dur_max_val)
+        v_dur_min = tk.DoubleVar(value=dur_min_val)
+        v_dur_max = tk.DoubleVar(value=dur_max_val)
         name_var = tk.StringVar(value=seed_name)
         enabled_var = tk.BooleanVar(value=enabled_default)
 
@@ -2114,6 +2144,7 @@ class App(tk.Tk):
         update_tab_label()
         name_var.trace_add("write", update_tab_label)
 
+
         self._pair(
             col,
             "Typing ms/char (min/max)",
@@ -2135,6 +2166,7 @@ class App(tk.Tk):
             v_dur_max,
             info="Time budget for scanning results of each query before moving on.",
         )
+
 
         self._pack_label_with_info(
             col,
@@ -3213,10 +3245,15 @@ class App(tk.Tk):
             name = raw_name or default_name
             tmin = int(sv["typ_min"].get()); tmax = int(sv["typ_max"].get())
             rmin = int(sv["resp_min"].get()); rmax = int(sv["resp_max"].get())
-            dmin = int(sv["dur_min"].get()); dmax = int(sv["dur_max"].get())
+            try:
+                dmin = float(sv["dur_min"].get())
+                dmax = float(sv["dur_max"].get())
+            except Exception:
+                dmin, dmax = DEFAULT_MINUTES_PER_QUERY_RANGE
             if dmax < dmin:
                 dmin, dmax = dmax, dmin
-            dmin = max(1, dmin)
+            min_minutes = 1.0 / 60.0
+            dmin = max(min_minutes, dmin)
             dmax = max(dmin, dmax)
             mode_var = sv.get("mode_var")
             mode_raw = mode_var.get() if mode_var is not None else "popular"
@@ -3233,7 +3270,7 @@ class App(tk.Tk):
                 name=name,
                 typing_ms_per_char=(tmin, tmax),
                 max_responses_before_switch=(rmin, rmax),
-                seconds_per_query_range=(dmin, dmax),
+                minutes_per_query_range=(dmin, dmax),
                 search_queries=q_lines,
                 responses=r_lines,
                 search_mode=mode_value,
@@ -3265,13 +3302,14 @@ class App(tk.Tk):
         else:
             mode_value = fallback_mode
         try:
-            dur_min = int(sv["dur_min"].get())
-            dur_max = int(sv["dur_max"].get())
+            dur_min = float(sv["dur_min"].get())
+            dur_max = float(sv["dur_max"].get())
         except Exception:
-            dur_min, dur_max = 90, 150
+            dur_min, dur_max = DEFAULT_MINUTES_PER_QUERY_RANGE
         if dur_max < dur_min:
             dur_min, dur_max = dur_max, dur_min
-        dur_min = max(1, dur_min)
+        min_minutes = 1.0 / 60.0
+        dur_min = max(min_minutes, dur_min)
         dur_max = max(dur_min, dur_max)
         return {
             "name": name,
@@ -3279,7 +3317,7 @@ class App(tk.Tk):
             "search_mode": mode_value,
             "typing_ms_per_char": (int(sv["typ_min"].get()), int(sv["typ_max"].get())),
             "max_responses_before_switch": (int(sv["resp_min"].get()), int(sv["resp_max"].get())),
-            "seconds_per_query_range": (dur_min, dur_max),
+            "minutes_per_query_range": (dur_min, dur_max),
             "search_queries": [
                 ln.strip()
                 for ln in sv["txt_queries"].get("1.0", "end").splitlines()
@@ -3439,9 +3477,8 @@ class App(tk.Tk):
             if isinstance(rpair, (list, tuple)) and len(rpair) == 2:
                 sv["resp_min"].set(int(rpair[0])); sv["resp_max"].set(int(rpair[1]))
 
-            dur_pair = section_cfg.get("seconds_per_query_range")
-            if isinstance(dur_pair, (list, tuple)) and len(dur_pair) == 2:
-                sv["dur_min"].set(int(dur_pair[0])); sv["dur_max"].set(int(dur_pair[1]))
+            dur_min_val, dur_max_val = self._seed_minutes_range(section_cfg)
+            sv["dur_min"].set(dur_min_val); sv["dur_max"].set(dur_max_val)
 
             queries_value = section_cfg.get("search_queries", None)
             if isinstance(queries_value, str):
