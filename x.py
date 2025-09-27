@@ -2050,7 +2050,6 @@ class App(tk.Tk):
                 "typ_max": v_typ_max,
                 "dur_min": v_dur_min,
                 "dur_max": v_dur_max,
-                "dur_ignore_apply": _apply_duration_ignore_state,
                 "dur_ignore": v_dur_ignore,
                 "mode_var": mode_var,
                 "default_mode": default_mode_ui,
@@ -2167,6 +2166,8 @@ class App(tk.Tk):
             ignore_button.configure(
                 text="Use this setting" if ignoring else "Ignore this setting"
             )
+
+        sv["dur_ignore_apply"] = _apply_duration_ignore_state
 
         def _toggle_duration_ignore():
             v_dur_ignore.set(not v_dur_ignore.get())
