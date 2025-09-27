@@ -1664,7 +1664,7 @@ class App(tk.Tk):
             "Session step minutes (min/max)",
             self.var_step_min,
             self.var_step_max,
-            info="Length of each active batch before the workflow pauses for a break.",
+            info="Length of each active batch before the workflow pauses for a break. Values are measured in minutes.",
         )
 
         self.var_break_min = tk.IntVar(value=2)
@@ -1674,7 +1674,7 @@ class App(tk.Tk):
             "Session break minutes (min/max)",
             self.var_break_min,
             self.var_break_max,
-            info="Duration of short breaks scheduled between session steps.",
+            info="Duration of short breaks scheduled between session steps. Values are measured in minutes.",
         )
 
         self.var_post_interval = tk.IntVar(value=0)
@@ -1682,7 +1682,7 @@ class App(tk.Tk):
             f,
             "Post interval minutes",
             self.var_post_interval,
-            info="Minutes between scheduled pauses for composing posts (0 disables automatic prompts).",
+            info="Minutes between scheduled pauses for composing posts (0 disables automatic prompts). Values are measured in minutes.",
         )
 
         self.var_sleep_start_h_min = tk.IntVar(value=22)
