@@ -190,8 +190,7 @@ def seconds_range_to_minutes(value: Any) -> Tuple[float, float]:
 class Section:
     name: str
     typing_ms_per_char: Tuple[int, int] = (220, 240)
-    max_responses_before_switch: Tuple[int, int] = (4, 8)
-    minutes_per_query_range: Tuple[float, float] = DEFAULT_MINUTES_PER_QUERY_RANGE
+    minutes_per_query_range: Optional[Tuple[float, float]] = DEFAULT_MINUTES_PER_QUERY_RANGE
     search_queries: List[str] = field(default_factory=list)
     responses: List[str] = field(default_factory=list)
     search_mode: str = "popular"
@@ -199,8 +198,9 @@ class Section:
     order: int = 0
     _query_cycle_index: int = field(default=0, init=False, repr=False)
     def pick_typing_speed(self) -> int: return random.randint(*self.typing_ms_per_char)
-    def pick_max_responses(self) -> int: return random.randint(*self.max_responses_before_switch)
     def pick_query_duration(self) -> float:
+        if self.minutes_per_query_range is None:
+            return float("inf")
         try:
             low, high = self.minutes_per_query_range
             low = float(low)
@@ -227,7 +227,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Sharp & Direct",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (6, 12),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "morning performance",
@@ -244,7 +243,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Professional & Brief",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (5, 9),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "client progress",
@@ -260,7 +258,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Builder Mindset",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (5, 10),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "roadmap items",
@@ -276,7 +273,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Networking & Collab",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (4, 8),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "partner announcements",
@@ -292,7 +288,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Motivation Lite",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (5, 9),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "team shoutouts",
@@ -307,7 +302,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Execution Mode",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (6, 12),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "status check",
@@ -323,7 +317,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Weekend Chill (still pro)",
         "enabled": True,
         "typing_ms_per_char": (220, 260),
-        "max_responses_before_switch": (3, 6),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "light topics",
@@ -339,7 +332,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Insightful & Calm",
         "enabled": True,
         "typing_ms_per_char": (220, 260),
-        "max_responses_before_switch": (4, 8),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "market notes",
@@ -355,7 +347,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Fast & To the Point",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (7, 13),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "quick scans",
@@ -370,7 +361,6 @@ DEFAULT_SECTIONS_SEED = [
         "name": "Creator/Brand Voice",
         "enabled": True,
         "typing_ms_per_char": (220, 240),
-        "max_responses_before_switch": (5, 10),
         "minutes_per_query_range": (1.5, 2.5),
         "search_queries": [
             "brand mentions",
@@ -1929,8 +1919,8 @@ class App(tk.Tk):
             "name": "",
             "enabled": True,
             "typing_ms_per_char": (220, 240),
-            "max_responses_before_switch": (4, 8),
             "minutes_per_query_range": (1.5, 2.5),
+            "ignore_minutes_per_query": False,
             "search_queries": [],
             "responses": [],
             "search_mode": "popular",
@@ -1938,6 +1928,8 @@ class App(tk.Tk):
 
     def _seed_minutes_range(self, seed: Dict[str, Any]) -> Tuple[float, float]:
         if isinstance(seed, dict):
+            if seed.get("minutes_per_query_range") is None:
+                return DEFAULT_MINUTES_PER_QUERY_RANGE
             if "minutes_per_query_range" in seed:
                 return coerce_minutes_range(seed["minutes_per_query_range"])
             if "seconds_per_query_range" in seed:
@@ -1955,10 +1947,13 @@ class App(tk.Tk):
             base["name"] = ""
         if "typing_ms_per_char" not in base:
             base["typing_ms_per_char"] = (220, 240)
-        if "max_responses_before_switch" not in base:
-            base["max_responses_before_switch"] = (4, 8)
+        base.pop("max_responses_before_switch", None)
         minutes_range = self._seed_minutes_range(base)
+        ignore_minutes = bool(base.get("ignore_minutes_per_query", False))
+        if base.get("minutes_per_query_range") is None:
+            ignore_minutes = True
         base["minutes_per_query_range"] = minutes_range
+        base["ignore_minutes_per_query"] = ignore_minutes
         base.pop("seconds_per_query_range", None)
         if "search_queries" not in base:
             base["search_queries"] = []
@@ -1990,16 +1985,10 @@ class App(tk.Tk):
         except Exception:
             typ_min_val, typ_max_val = 220, 240
 
-        resp_rng = seed.get("max_responses_before_switch", (4, 8))
-        if not isinstance(resp_rng, (list, tuple)) or len(resp_rng) != 2:
-            resp_rng = (4, 8)
-        try:
-            resp_min_val = int(resp_rng[0])
-            resp_max_val = int(resp_rng[1])
-        except Exception:
-            resp_min_val, resp_max_val = 4, 8
-
         dur_min_val, dur_max_val = self._seed_minutes_range(seed)
+        ignore_minutes = bool(seed.get("ignore_minutes_per_query", False))
+        if seed.get("minutes_per_query_range") is None:
+            ignore_minutes = True
 
         raw_queries = seed.get("search_queries", [])
         if isinstance(raw_queries, str):
@@ -2040,10 +2029,9 @@ class App(tk.Tk):
 
         v_typ_min = tk.IntVar(value=typ_min_val)
         v_typ_max = tk.IntVar(value=typ_max_val)
-        v_resp_min = tk.IntVar(value=resp_min_val)
-        v_resp_max = tk.IntVar(value=resp_max_val)
         v_dur_min = tk.DoubleVar(value=dur_min_val)
         v_dur_max = tk.DoubleVar(value=dur_max_val)
+        v_dur_ignore = tk.BooleanVar(value=ignore_minutes)
         name_var = tk.StringVar(value=seed_name)
         enabled_var = tk.BooleanVar(value=enabled_default)
 
@@ -2060,10 +2048,10 @@ class App(tk.Tk):
                 "enabled_var": enabled_var,
                 "typ_min": v_typ_min,
                 "typ_max": v_typ_max,
-                "resp_min": v_resp_min,
-                "resp_max": v_resp_max,
                 "dur_min": v_dur_min,
                 "dur_max": v_dur_max,
+                "dur_ignore_apply": _apply_duration_ignore_state,
+                "dur_ignore": v_dur_ignore,
                 "mode_var": mode_var,
                 "default_mode": default_mode_ui,
             }
@@ -2153,22 +2141,46 @@ class App(tk.Tk):
             "Typing ms/char (min/max)",
             v_typ_min,
             v_typ_max,
-            info="Simulated typing speed range used when drafting replies in this section.",
+            info=(
+                "Simulated typing speed per character. Lower values speed up replies; higher values slow them down to"
+                " mimic more deliberate typing."
+            ),
         )
-        self._pair(
+        duration_row, duration_min_entry, duration_max_entry = self._pair(
             col,
-            "Max responses before switch (min/max)",
-            v_resp_min,
-            v_resp_max,
-            info="Number of replies to send before rotating to the next search query.",
-        )
-        self._pair(
-            col,
-            "Seconds per query (min/max)",
+            "Time per query (minutes, min/max)",
             v_dur_min,
             v_dur_max,
-            info="Time budget for scanning results of each query before moving on.",
+            info=(
+                "Time budget (in minutes) for reviewing results before switching to the next search query. Tight ranges keep"
+                " discovery snappy, while wider ranges allow deeper dives."
+            ),
         )
+
+        ignore_button = ttk.Button(duration_row, width=18)
+
+        def _apply_duration_ignore_state(*_):
+            ignoring = bool(v_dur_ignore.get())
+            state = "disabled" if ignoring else "normal"
+            duration_min_entry.configure(state=state)
+            duration_max_entry.configure(state=state)
+            ignore_button.configure(
+                text="Use this setting" if ignoring else "Ignore this setting"
+            )
+
+        def _toggle_duration_ignore():
+            v_dur_ignore.set(not v_dur_ignore.get())
+            _apply_duration_ignore_state()
+            self._mark_dirty()
+
+        ignore_button.configure(command=_toggle_duration_ignore)
+        ignore_button.pack(side="left", padx=(8, 0))
+        self._create_info_button(
+            duration_row,
+            "Temporarily ignore the per-query time limit so only session and step timers apply.",
+            title="Ignore time budget",
+        ).pack(side="left", padx=(4, 0))
+        _apply_duration_ignore_state()
 
 
         self._pack_label_with_info(
@@ -2979,6 +2991,7 @@ class App(tk.Tk):
         e2.pack(side="left")
         e1.bind("<KeyRelease>", lambda *_: self._mark_dirty())
         e2.bind("<KeyRelease>", lambda *_: self._mark_dirty())
+        return row, e1, e2
 
     def _section_tab_title(self, value: str, fallback: Optional[str] = None) -> str:
         text = str(value or "").strip()
@@ -3257,17 +3270,23 @@ class App(tk.Tk):
             raw_name = str(sv["name_var"].get()).strip()
             name = raw_name or default_name
             tmin = int(sv["typ_min"].get()); tmax = int(sv["typ_max"].get())
-            rmin = int(sv["resp_min"].get()); rmax = int(sv["resp_max"].get())
-            try:
-                dmin = float(sv["dur_min"].get())
-                dmax = float(sv["dur_max"].get())
-            except Exception:
-                dmin, dmax = DEFAULT_MINUTES_PER_QUERY_RANGE
-            if dmax < dmin:
-                dmin, dmax = dmax, dmin
-            min_minutes = 1.0 / 60.0
-            dmin = max(min_minutes, dmin)
-            dmax = max(dmin, dmax)
+            dur_ignore_var = sv.get("dur_ignore")
+            ignore_minutes = bool(dur_ignore_var.get()) if dur_ignore_var is not None else False
+            minutes_range: Optional[Tuple[float, float]]
+            if ignore_minutes:
+                minutes_range = None
+            else:
+                try:
+                    dmin = float(sv["dur_min"].get())
+                    dmax = float(sv["dur_max"].get())
+                except Exception:
+                    dmin, dmax = DEFAULT_MINUTES_PER_QUERY_RANGE
+                if dmax < dmin:
+                    dmin, dmax = dmax, dmin
+                min_minutes = 1.0 / 60.0
+                dmin = max(min_minutes, dmin)
+                dmax = max(dmin, dmax)
+                minutes_range = (dmin, dmax)
             mode_var = sv.get("mode_var")
             mode_raw = mode_var.get() if mode_var is not None else "popular"
             mode_norm = normalize_search_mode(mode_raw)
@@ -3282,8 +3301,7 @@ class App(tk.Tk):
             out.append(Section(
                 name=name,
                 typing_ms_per_char=(tmin, tmax),
-                max_responses_before_switch=(rmin, rmax),
-                minutes_per_query_range=(dmin, dmax),
+                minutes_per_query_range=minutes_range,
                 search_queries=q_lines,
                 responses=r_lines,
                 search_mode=mode_value,
@@ -3314,6 +3332,8 @@ class App(tk.Tk):
             mode_value = "popular"
         else:
             mode_value = fallback_mode
+        dur_ignore_var = sv.get("dur_ignore")
+        ignore_minutes = bool(dur_ignore_var.get()) if dur_ignore_var is not None else False
         try:
             dur_min = float(sv["dur_min"].get())
             dur_max = float(sv["dur_max"].get())
@@ -3324,13 +3344,14 @@ class App(tk.Tk):
         min_minutes = 1.0 / 60.0
         dur_min = max(min_minutes, dur_min)
         dur_max = max(dur_min, dur_max)
+        minutes_value: Tuple[float, float] = (dur_min, dur_max)
         return {
             "name": name,
             "enabled": bool(sv["enabled_var"].get()),
             "search_mode": mode_value,
             "typing_ms_per_char": (int(sv["typ_min"].get()), int(sv["typ_max"].get())),
-            "max_responses_before_switch": (int(sv["resp_min"].get()), int(sv["resp_max"].get())),
-            "minutes_per_query_range": (dur_min, dur_max),
+            "minutes_per_query_range": minutes_value,
+            "ignore_minutes_per_query": ignore_minutes,
             "search_queries": [
                 ln.strip()
                 for ln in sv["txt_queries"].get("1.0", "end").splitlines()
@@ -3485,13 +3506,20 @@ class App(tk.Tk):
             tpair = section_cfg.get("typing_ms_per_char")
             if isinstance(tpair, (list, tuple)) and len(tpair) == 2:
                 sv["typ_min"].set(int(tpair[0])); sv["typ_max"].set(int(tpair[1]))
-
-            rpair = section_cfg.get("max_responses_before_switch")
-            if isinstance(rpair, (list, tuple)) and len(rpair) == 2:
-                sv["resp_min"].set(int(rpair[0])); sv["resp_max"].set(int(rpair[1]))
-
             dur_min_val, dur_max_val = self._seed_minutes_range(section_cfg)
             sv["dur_min"].set(dur_min_val); sv["dur_max"].set(dur_max_val)
+            ignore_minutes = bool(section_cfg.get("ignore_minutes_per_query", False))
+            if section_cfg.get("minutes_per_query_range") is None:
+                ignore_minutes = True
+            dur_ignore_var = sv.get("dur_ignore")
+            if dur_ignore_var is not None:
+                try:
+                    dur_ignore_var.set(bool(ignore_minutes))
+                except Exception:
+                    pass
+                apply_fn = sv.get("dur_ignore_apply")
+                if callable(apply_fn):
+                    apply_fn()
 
             queries_value = section_cfg.get("search_queries", None)
             if isinstance(queries_value, str):
