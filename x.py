@@ -84,8 +84,12 @@ def similarity_ratio(a: str, b: str) -> float:
     inter = len(ta & tb); union = len(ta | tb)
     return inter / max(1, union)
 
-BASE_WAIT = 3
-MAX_WAIT = 15
+# Wait slightly longer for pages to finish loading before we begin scanning
+# for content. Some users have reported that the bot occasionally started
+# scrolling before the feed fully populated, so we extend both the minimum and
+# maximum wait windows to give the page a better chance to settle.
+BASE_WAIT = 5
+MAX_WAIT = 25
 
 # Natural pauses inserted between high-level actions to mimic human pacing.
 STEP_PAUSE_MIN = 0.5
@@ -1274,8 +1278,10 @@ class App(tk.Tk):
         )
         self._section_enabled_bg = "#dbeafe"
         self._section_enabled_selected_bg = "#bfdbfe"
+
         self._section_tab_enabled_style = "SectionEnabled.TNotebook.Tab"
         self._section_tab_disabled_style = "SectionDisabled.TNotebook.Tab"
+
         style.configure(self._section_tab_disabled_style)
         style.map(
             self._section_tab_disabled_style,
@@ -1291,6 +1297,7 @@ class App(tk.Tk):
                 ("selected", self._section_enabled_selected_bg),
                 ("!selected", self._section_enabled_bg),
             ],
+
         )
 
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True)
@@ -2290,18 +2297,21 @@ class App(tk.Tk):
             enabled = bool(enabled_var.get())
         except tk.TclError:
             enabled = False
+
         tab_style = (
             getattr(self, "_section_tab_enabled_style", None)
             if enabled
             else getattr(self, "_section_tab_disabled_style", None)
         ) or "TNotebook.Tab"
         highlight_frames = sv.get("highlight_frames", [])
+
         for frame in highlight_frames:
             try:
                 frame.configure(style="")
             except tk.TclError:
                 try:
                     frame.configure(background="")
+
                 except tk.TclError:
                     pass
         notebook = getattr(self, "sections_notebook", None)
