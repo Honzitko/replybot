@@ -1263,6 +1263,35 @@ class App(tk.Tk):
 
     # UI scaffolding
     def _build_ui(self):
+        style = ttk.Style(self)
+        self._style = style
+        base_frame_bg = style.lookup("TFrame", "background") or self.cget("background") or "#f0f0f0"
+        base_tab_bg = style.lookup("TNotebook.Tab", "background") or base_frame_bg
+        base_tab_selected_bg = (
+            style.lookup("TNotebook.Tab", "background", ("selected",))
+            or style.lookup("TNotebook", "background")
+            or base_tab_bg
+        )
+        self._section_enabled_bg = "#dbeafe"
+        self._section_enabled_selected_bg = "#bfdbfe"
+        self._section_disabled_bg = base_frame_bg
+        self._section_frame_enabled_style = "SectionEnabled.TFrame"
+        self._section_frame_disabled_style = "SectionDisabled.TFrame"
+        style.configure(self._section_frame_disabled_style, background=base_frame_bg)
+        style.configure(self._section_frame_enabled_style, background=self._section_enabled_bg)
+        self._section_tab_enabled_style = "SectionEnabled.TNotebook.Tab"
+        self._section_tab_disabled_style = "SectionDisabled.TNotebook.Tab"
+        style.configure(self._section_tab_disabled_style, background=base_tab_bg)
+        style.map(
+            self._section_tab_disabled_style,
+            background=[("selected", base_tab_selected_bg)],
+        )
+        style.configure(self._section_tab_enabled_style, background=self._section_enabled_bg)
+        style.map(
+            self._section_tab_enabled_style,
+            background=[("selected", self._section_enabled_selected_bg)],
+        )
+
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True)
 
         self.tab_settings = ttk.Frame(self.nb)
@@ -2016,6 +2045,7 @@ class App(tk.Tk):
         order_var = tk.IntVar(value=order_value)
 
         tab = ttk.Frame(notebook)
+        highlight_frames: List[tk.Misc] = [tab]
         notebook.add(tab, text=self._section_tab_title(seed_name, fallback=fallback_name))
 
         sv: Dict[str, Any] = {
@@ -2025,6 +2055,7 @@ class App(tk.Tk):
             "tab": tab,
             "default_index": len(self.sections_vars),
             "seed_ref": seed,
+            "highlight_frames": highlight_frames,
         }
 
         v_typ_min = tk.IntVar(value=typ_min_val)
@@ -2058,9 +2089,11 @@ class App(tk.Tk):
 
         col = ttk.Frame(tab)
         col.pack(fill="both", expand=True, padx=10, pady=10)
+        highlight_frames.append(col)
 
         header = ttk.Frame(col)
         header.pack(fill="x", pady=(0, 8))
+        highlight_frames.append(header)
         header.columnconfigure(1, weight=1)
         self._grid_label_with_info(
             header,
@@ -2073,7 +2106,7 @@ class App(tk.Tk):
         entry_name = ttk.Entry(header, textvariable=name_var)
         entry_name.grid(row=0, column=1, sticky="ew", padx=(6, 0))
         entry_name.bind("<KeyRelease>", lambda *_: self._mark_dirty())
-        self._checkbutton_with_info(
+        chk_enabled = self._checkbutton_with_info(
             header,
             text="Enabled",
             variable=enabled_var,
@@ -2081,6 +2114,7 @@ class App(tk.Tk):
             info="Toggle to include this section when running the scheduler.",
             grid={"row": 0, "column": 2, "sticky": "w", "padx": (12, 0)},
         )
+        highlight_frames.append(chk_enabled.master)
         self._grid_label_with_info(
             header,
             "Search filter:",
@@ -2102,6 +2136,7 @@ class App(tk.Tk):
 
         controls = ttk.Frame(header)
         controls.grid(row=0, column=3, sticky="e", padx=(12, 0))
+        highlight_frames.append(controls)
         self._button_with_info(
             controls,
             text="↑",
@@ -2135,7 +2170,7 @@ class App(tk.Tk):
         name_var.trace_add("write", update_tab_label)
 
 
-        self._pair(
+        typing_row, _, _ = self._pair(
             col,
             "Typing ms/char (min/max)",
             v_typ_min,
@@ -2145,6 +2180,7 @@ class App(tk.Tk):
                 " mimic more deliberate typing."
             ),
         )
+        highlight_frames.append(typing_row)
         duration_row, duration_min_entry, duration_max_entry = self._pair(
             col,
             "Time per query (minutes, min/max)",
@@ -2155,6 +2191,7 @@ class App(tk.Tk):
                 " discovery snappy, while wider ranges allow deeper dives."
             ),
         )
+        highlight_frames.append(duration_row)
 
         ignore_button = ttk.Button(duration_row, width=18)
 
@@ -2184,25 +2221,27 @@ class App(tk.Tk):
         _apply_duration_ignore_state()
 
 
-        self._pack_label_with_info(
+        queries_label = self._pack_label_with_info(
             col,
             "Search queries (one per line):",
             "List of X search queries executed for this section (one per line).",
             anchor="w",
             pady=(8, 2),
         )
+        highlight_frames.append(queries_label)
         txt_q = scrolledtext.ScrolledText(col, height=6)
         if queries:
             txt_q.insert("1.0", "\n".join(queries))
         txt_q.pack(fill="both", expand=False)
 
-        self._pack_label_with_info(
+        responses_label = self._pack_label_with_info(
             col,
             "Responses (one per line):",
             "Pool of reply snippets randomly selected when engaging with results in this section.",
             anchor="w",
             pady=(8, 2),
         )
+        highlight_frames.append(responses_label)
         txt_r = scrolledtext.ScrolledText(col, height=8)
         if responses:
             txt_r.insert("1.0", "\n".join(responses))
@@ -2217,6 +2256,13 @@ class App(tk.Tk):
                 "txt_responses": txt_r,
             }
         )
+
+        def _on_enabled_trace(*_):
+            self._refresh_section_highlight(sv)
+
+        trace_name = enabled_var.trace_add("write", _on_enabled_trace)
+        sv["enabled_trace"] = trace_name
+        self._refresh_section_highlight(sv)
 
         self.sections_vars.append(sv)
         self._ordered_section_vars()
@@ -2234,6 +2280,45 @@ class App(tk.Tk):
             self._mark_dirty()
 
         return sv
+
+    def _refresh_section_highlight(self, sv: Dict[str, Any]) -> None:
+        enabled_var = sv.get("enabled_var")
+        if enabled_var is None:
+            return
+        try:
+            enabled = bool(enabled_var.get())
+        except tk.TclError:
+            enabled = False
+        frame_style = (
+            getattr(self, "_section_frame_enabled_style", None)
+            if enabled
+            else getattr(self, "_section_frame_disabled_style", None)
+        ) or "TFrame"
+        tab_style = (
+            getattr(self, "_section_tab_enabled_style", None)
+            if enabled
+            else getattr(self, "_section_tab_disabled_style", None)
+        ) or "TNotebook.Tab"
+        highlight_frames = sv.get("highlight_frames", [])
+        background_enabled = getattr(self, "_section_enabled_bg", "#dbeafe")
+        background_disabled = getattr(self, "_section_disabled_bg", "")
+        for frame in highlight_frames:
+            try:
+                frame.configure(style=frame_style)
+            except tk.TclError:
+                try:
+                    frame.configure(
+                        background=background_enabled if enabled else background_disabled
+                    )
+                except tk.TclError:
+                    pass
+        notebook = getattr(self, "sections_notebook", None)
+        tab = sv.get("tab")
+        if notebook is not None and tab is not None and tab_style:
+            try:
+                notebook.tab(tab, style=tab_style)
+            except tk.TclError:
+                pass
 
     def _delete_current_section(self) -> None:
         notebook = getattr(self, "sections_notebook", None)
