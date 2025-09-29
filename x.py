@@ -39,6 +39,7 @@ from typing import List, Tuple, Optional, Dict, Set, Callable, Any
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
+from tkinter import font as tkfont
 from urllib.parse import quote as url_quote
 try:
     from pynput import keyboard as pynkeyboard
@@ -1276,6 +1277,14 @@ class App(tk.Tk):
             or style.lookup("TNotebook", "background")
             or base_tab_bg
         )
+        tab_font_name = style.lookup("TNotebook.Tab", "font")
+        base_tab_font = (
+            tkfont.nametofont(tab_font_name)
+            if tab_font_name
+            else tkfont.nametofont("TkDefaultFont")
+        )
+        self._section_tab_enabled_font = tkfont.Font(master=self, **base_tab_font.actual())
+        self._section_tab_enabled_font.configure(weight="bold")
         self._section_enabled_bg = "#dbeafe"
         self._section_enabled_selected_bg = "#bfdbfe"
 
@@ -1290,7 +1299,10 @@ class App(tk.Tk):
                 ("!selected", base_tab_bg),
             ],
         )
-        style.configure(self._section_tab_enabled_style)
+        style.configure(
+            self._section_tab_enabled_style,
+            font=self._section_tab_enabled_font,
+        )
         style.map(
             self._section_tab_enabled_style,
             background=[
