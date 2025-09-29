@@ -1278,11 +1278,7 @@ class App(tk.Tk):
         )
         self._section_enabled_bg = "#dbeafe"
         self._section_enabled_selected_bg = "#bfdbfe"
-        self._section_disabled_bg = base_frame_bg
-        self._section_frame_enabled_style = "SectionEnabled.TFrame"
-        self._section_frame_disabled_style = "SectionDisabled.TFrame"
-        style.configure(self._section_frame_disabled_style, background=base_frame_bg)
-        style.configure(self._section_frame_enabled_style, background=self._section_enabled_bg)
+
         self._section_tab_enabled_style = "SectionEnabled.TNotebook.Tab"
         self._section_tab_disabled_style = "SectionDisabled.TNotebook.Tab"
 
@@ -2301,27 +2297,21 @@ class App(tk.Tk):
             enabled = bool(enabled_var.get())
         except tk.TclError:
             enabled = False
-        frame_style = (
-            getattr(self, "_section_frame_enabled_style", None)
-            if enabled
-            else getattr(self, "_section_frame_disabled_style", None)
-        ) or "TFrame"
+
         tab_style = (
             getattr(self, "_section_tab_enabled_style", None)
             if enabled
             else getattr(self, "_section_tab_disabled_style", None)
         ) or "TNotebook.Tab"
         highlight_frames = sv.get("highlight_frames", [])
-        background_enabled = getattr(self, "_section_enabled_bg", "#dbeafe")
-        background_disabled = getattr(self, "_section_disabled_bg", "")
+
         for frame in highlight_frames:
             try:
-                frame.configure(style=frame_style)
+                frame.configure(style="")
             except tk.TclError:
                 try:
-                    frame.configure(
-                        background=background_enabled if enabled else background_disabled
-                    )
+                    frame.configure(background="")
+
                 except tk.TclError:
                     pass
         notebook = getattr(self, "sections_notebook", None)
