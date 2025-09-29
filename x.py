@@ -84,8 +84,12 @@ def similarity_ratio(a: str, b: str) -> float:
     inter = len(ta & tb); union = len(ta | tb)
     return inter / max(1, union)
 
-BASE_WAIT = 3
-MAX_WAIT = 15
+# Wait slightly longer for pages to finish loading before we begin scanning
+# for content. Some users have reported that the bot occasionally started
+# scrolling before the feed fully populated, so we extend both the minimum and
+# maximum wait windows to give the page a better chance to settle.
+BASE_WAIT = 5
+MAX_WAIT = 25
 
 # Natural pauses inserted between high-level actions to mimic human pacing.
 STEP_PAUSE_MIN = 0.5
@@ -1281,6 +1285,7 @@ class App(tk.Tk):
         style.configure(self._section_frame_enabled_style, background=self._section_enabled_bg)
         self._section_tab_enabled_style = "SectionEnabled.TNotebook.Tab"
         self._section_tab_disabled_style = "SectionDisabled.TNotebook.Tab"
+
         style.configure(self._section_tab_disabled_style)
         style.map(
             self._section_tab_disabled_style,
@@ -1296,6 +1301,7 @@ class App(tk.Tk):
                 ("selected", self._section_enabled_selected_bg),
                 ("!selected", self._section_enabled_bg),
             ],
+
         )
 
         self.nb = ttk.Notebook(self); self.nb.pack(fill="both", expand=True)
