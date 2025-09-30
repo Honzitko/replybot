@@ -1953,6 +1953,17 @@ class App(tk.Tk):
         ).pack(side="left", padx=(4, 0))
         self.section_delete_button = delete_btn
 
+        summary_container = ttk.Frame(controls)
+        summary_container.pack(side="right")
+        self.sections_enabled_summary_var = tk.StringVar(value="Enabled sections: none")
+        self.sections_enabled_summary_label = ttk.Label(
+            summary_container,
+            textvariable=self.sections_enabled_summary_var,
+            wraplength=280,
+            justify="right",
+        )
+        self.sections_enabled_summary_label.pack(side="right")
+
         self.sections_notebook = ttk.Notebook(container)
         self.sections_notebook.pack(fill="both", expand=True)
         self.sections_notebook.bind("<<NotebookTabChanged>>", self._update_section_controls)
@@ -2337,6 +2348,8 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
 
+        self._update_sections_enabled_summary()
+
     def _delete_current_section(self) -> None:
         notebook = getattr(self, "sections_notebook", None)
         if notebook is None:
@@ -2393,11 +2406,53 @@ class App(tk.Tk):
         btn = getattr(self, "section_delete_button", None)
         notebook = getattr(self, "sections_notebook", None)
         if btn is None or notebook is None:
+            self._update_sections_enabled_summary()
             return
         tabs = notebook.tabs() if notebook else []
         state = "normal" if tabs else "disabled"
         try:
             btn.configure(state=state)
+        except tk.TclError:
+            pass
+
+        self._update_sections_enabled_summary()
+
+    def _update_sections_enabled_summary(self) -> None:
+        summary_var = getattr(self, "sections_enabled_summary_var", None)
+        if summary_var is None:
+            return
+
+        ordered_sections = list(getattr(self, "sections_vars", []))
+        total = len(ordered_sections)
+        enabled_names: List[str] = []
+        for sv in ordered_sections:
+            enabled_var = sv.get("enabled_var")
+            name_var = sv.get("name_var")
+            default_name = sv.get("default_name", "Section")
+            if enabled_var is None or name_var is None:
+                continue
+            try:
+                is_enabled = bool(enabled_var.get())
+            except tk.TclError:
+                is_enabled = False
+            if not is_enabled:
+                continue
+            try:
+                raw_name = str(name_var.get()).strip()
+            except tk.TclError:
+                raw_name = ""
+            enabled_names.append(raw_name or default_name)
+
+        if total == 0:
+            summary = "No sections configured."
+        elif not enabled_names:
+            summary = f"Enabled sections: none (0 of {total})"
+        else:
+            names_display = ", ".join(enabled_names)
+            summary = f"Enabled sections ({len(enabled_names)} of {total}): {names_display}"
+
+        try:
+            summary_var.set(summary)
         except tk.TclError:
             pass
 
