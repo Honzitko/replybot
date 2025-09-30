@@ -1283,7 +1283,10 @@ class App(tk.Tk):
             if tab_font_name
             else tkfont.nametofont("TkDefaultFont")
         )
-        self._section_tab_enabled_font = tkfont.Font(master=self, **base_tab_font.actual())
+        # ``tkfont.Font`` expects a ``root`` keyword argument for the parent widget.
+        # Using ``master`` raises ``TclError`` on newer Tk versions, so we pass
+        # the current widget via ``root`` instead.
+        self._section_tab_enabled_font = tkfont.Font(root=self, **base_tab_font.actual())
         self._section_tab_enabled_font.configure(weight="bold")
         self._section_enabled_bg = "#dbeafe"
         self._section_enabled_selected_bg = "#bfdbfe"
