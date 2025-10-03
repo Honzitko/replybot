@@ -1699,16 +1699,6 @@ class App(tk.Tk):
             info="Range of total hours the scheduler may run in a day before shutting down.",
         )
 
-        self.var_step_min = tk.IntVar(value=12)
-        self.var_step_max = tk.IntVar(value=16)
-        self._pair(
-            f,
-            "Session step minutes (min/max)",
-            self.var_step_min,
-            self.var_step_max,
-            info="Length of each active batch before the workflow pauses for a break. Values are measured in minutes.",
-        )
-
         self.var_break_min = tk.IntVar(value=2)
         self.var_break_max = tk.IntVar(value=4)
         self._pair(
@@ -1914,6 +1904,19 @@ class App(tk.Tk):
             "Each section stores search queries, response pools, and pacing parameters.",
             anchor="w",
             pady=(0, 6),
+        )
+
+        pacing_frame = ttk.LabelFrame(container, text="Session pacing")
+        pacing_frame.pack(fill="x", pady=(0, 6))
+
+        self.var_step_min = tk.IntVar(value=12)
+        self.var_step_max = tk.IntVar(value=16)
+        self._pair(
+            pacing_frame,
+            "Session step minutes (min/max)",
+            self.var_step_min,
+            self.var_step_max,
+            info="Length of each active batch before the workflow pauses for a break. Values are measured in minutes.",
         )
 
         controls = ttk.Frame(container)
