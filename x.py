@@ -167,6 +167,7 @@ DEFAULT_MINUTES_PER_QUERY_RANGE: Tuple[float, float] = (
     DEFAULT_SECONDS_PER_QUERY_RANGE[0] / 60.0,
     DEFAULT_SECONDS_PER_QUERY_RANGE[1] / 60.0,
 )
+DEFAULT_QUERY_BREAK_SECONDS_RANGE: Tuple[float, float] = (0.0, 0.0)
 
 
 def _coerce_float_pair(value: Any, fallback: Tuple[float, float]) -> Tuple[float, float]:
@@ -563,6 +564,13 @@ class SchedulerWorker(threading.Thread):
         self._opened_this_step: bool = False
         self._browser_opened = False
         self._popular_initial_scroll_pending = False
+        qb_low, qb_high = _coerce_float_pair(
+            self.cfg.get("query_break_seconds_range"),
+            DEFAULT_QUERY_BREAK_SECONDS_RANGE,
+        )
+        qb_low = max(0.0, float(qb_low))
+        qb_high = max(qb_low, float(qb_high))
+        self.query_break_seconds_range: Tuple[float, float] = (qb_low, qb_high)
 
     def _log(self, level, msg):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
@@ -617,6 +625,16 @@ class SchedulerWorker(threading.Thread):
             self._log("INFO", f"Micro pause {dur:.1f}s")
             self._pauseable_sleep(dur)
             self.next_micro_pause_at = self._schedule_next_micro_pause()
+
+    def _query_break_pause(self):
+        low, high = self.query_break_seconds_range
+        if high <= 0:
+            return
+        delay = jitter(low, high) if high > low else low
+        if delay <= 0:
+            return
+        self._log("INFO", f"Query break {delay:.1f}s")
+        self._pauseable_sleep(delay)
 
     def _cooldown(self):
         base = jitter(*self.cfg["min_seconds_between_actions_range"])
@@ -938,6 +956,16 @@ class SchedulerWorker(threading.Thread):
                     if time_budget_exhausted:
                         spent = min(spent, query_seconds)
                         self._log("INFO", f"Section {section.name} time budget reached ({spent:.0f}s).")
+
+                    now_check = datetime.now(CET)
+                    if (
+                        not self.stop_event.is_set()
+                        and processed < targets_goal
+                        and now_check < step_deadline
+                        and now_check < self.session_end
+                        and self.interactions_today < self.daily_cap
+                    ):
+                        self._query_break_pause()
 
                 if datetime.now(CET) < self.session_end and not self.stop_event.is_set():
                     until = min(self.session_end, datetime.now(CET) + timedelta(minutes=break_minutes))
@@ -1790,6 +1818,18 @@ class App(tk.Tk):
             self.var_micro_s_min,
             self.var_micro_s_max,
             info="Duration of each micro pause inserted into the action stream.",
+        )
+
+        self.var_query_break_s_min = tk.DoubleVar(value=0.0)
+        self.var_query_break_s_max = tk.DoubleVar(value=0.0)
+        self._pair(
+            f,
+            "Query break seconds (min/max)",
+            self.var_query_break_s_min,
+            self.var_query_break_s_max,
+            info=(
+                "Global pause applied after completing a search query before moving on to the next one."
+            ),
         )
 
         self.var_min_gap_s_min = tk.DoubleVar(value=0.4)
@@ -3367,6 +3407,10 @@ class App(tk.Tk):
             "night_sleep_hours_range": (float(self.var_sleep_hours_min.get()), float(self.var_sleep_hours_max.get())),
             "micro_pause_every_n_actions_range": (int(self.var_micro_every_min.get()), int(self.var_micro_every_max.get())),
             "micro_pause_seconds_range": (float(self.var_micro_s_min.get()), float(self.var_micro_s_max.get())),
+            "query_break_seconds_range": (
+                float(self.var_query_break_s_min.get()),
+                float(self.var_query_break_s_max.get()),
+            ),
             "weekday_activity_scale": float(self.var_weekday_scale.get()),
             "weekend_activity_scale": float(self.var_weekend_scale.get()),
             "daily_interaction_cap_range": (int(self.var_daily_cap_min.get()), int(self.var_daily_cap_max.get())),
@@ -3545,6 +3589,7 @@ class App(tk.Tk):
 
         set_pair(self.var_micro_every_min, self.var_micro_every_max, cfg.get("micro_pause_every_n_actions_range"), (8,12))
         set_pair(self.var_micro_s_min, self.var_micro_s_max, cfg.get("micro_pause_seconds_range"), (2.0,4.0))
+        set_pair(self.var_query_break_s_min, self.var_query_break_s_max, cfg.get("query_break_seconds_range"), (0.0,0.0))
 
         set_pair(self.var_min_gap_s_min, self.var_min_gap_s_max, cfg.get("min_seconds_between_actions_range"), (0.4,0.9))
         self.var_extra_jitter_prob.set(cfg.get("extra_jitter_probability", 0.05))
