@@ -7,7 +7,7 @@ X Scheduler (Manual/Compliant Edition)
 What it does (compliant, no simulated input):
 • Profiles (JSON in ./configs) — load/save "Default" + custom
 • Sections with queries (search terms) & responses (reply lines)
-• Global Search Mode: Popular / Latest (opens proper X search URL)
+• Global Search Mode: Popular / Latest / Latest without replies (opens proper X search URL)
 • NEW: Search Open Policy — Every time / Once per step / Once per section
 • Session pacing: session hours, step minutes, break minutes, micro-pauses
 • Daily/hourly caps, content similarity filter, profanity/blacklist/whitelist
@@ -113,6 +113,18 @@ POPULAR_INITIAL_J_RANGE = (14, 17)
 
 POPULAR_SEARCH_MODES: Set[str] = {"popular", "top"}
 LATEST_SEARCH_MODES: Set[str] = {"latest", "nejnovější", "nejnovejsi", "live"}
+LATEST_WITHOUT_REPLIES_SEARCH_MODES: Set[str] = {
+    "latest_no_replies",
+    "latest without replies",
+    "latest_without_replies",
+    "latest-no-replies",
+    "live_no_replies",
+    "live without replies",
+    "live_without_replies",
+    "live-no-replies",
+}
+
+NO_REPLIES_FILTER = "-filter:replies"
 
 
 def normalize_search_mode(mode: str) -> str:
@@ -145,19 +157,57 @@ def ensure_connection(url: str, timeout: float) -> float:
         logging.error(f"Connection check failed for {url}: {e}")
         raise
 
+def resolve_search_mode(mode: str, fallback: str = "popular") -> str:
+    fallback_norm = normalize_search_mode(fallback)
+    if fallback_norm in LATEST_WITHOUT_REPLIES_SEARCH_MODES:
+        fallback_canonical = "latest_no_replies"
+    elif fallback_norm in LATEST_SEARCH_MODES:
+        fallback_canonical = "latest"
+    elif fallback_norm in POPULAR_SEARCH_MODES:
+        fallback_canonical = "popular"
+    else:
+        fallback_canonical = "popular"
+
+    mode_normalized = normalize_search_mode(mode)
+    if mode_normalized in LATEST_WITHOUT_REPLIES_SEARCH_MODES:
+        return "latest_no_replies"
+    if mode_normalized in LATEST_SEARCH_MODES:
+        return "latest"
+    if mode_normalized in POPULAR_SEARCH_MODES:
+        return "popular"
+    return fallback_canonical
+
+
+def search_mode_label(mode: str) -> str:
+    canonical = resolve_search_mode(mode)
+    if canonical == "latest_no_replies":
+        return "Latest without replies"
+    if canonical == "latest":
+        return "Latest"
+    return "Popular"
+
+
 def build_search_url(query: str, mode: str) -> str:
-    """
+    """Return an X search URL that matches ``query`` and ``mode``.
+
     Popular: https://x.com/search?q=<q>&src=typed_query&f=top
     Latest:  https://x.com/search?q=<q>&src=typed_query&f=live
+    Latest without replies: Adds ``-filter:replies`` and uses ``&f=live``.
     """
 
-    q = url_quote(query or "")
-    mode_normalized = normalize_search_mode(mode)
+    canonical_mode = resolve_search_mode(mode)
+    query_text = str(query or "")
+    if canonical_mode == "latest_no_replies":
+        query_lower = query_text.lower()
+        if NO_REPLIES_FILTER not in query_lower:
+            query_text = f"{query_text} {NO_REPLIES_FILTER}".strip()
+
+    q = url_quote(query_text)
     url = f"https://x.com/search?q={q}&src=typed_query"
 
-    if mode_normalized in LATEST_SEARCH_MODES:
+    if canonical_mode in {"latest", "latest_no_replies"}:
         url += "&f=live"
-    elif mode_normalized in POPULAR_SEARCH_MODES:
+    elif canonical_mode == "popular":
         url += "&f=top"
 
     return url
@@ -552,13 +602,7 @@ class SchedulerWorker(threading.Thread):
         # derived
         self.search_open_policy = str(self.cfg.get("search_open_policy", "once_per_step")).lower()
         for section in self.sections:
-            normalized = normalize_search_mode(getattr(section, "search_mode", "popular"))
-            if normalized in LATEST_SEARCH_MODES:
-                section.search_mode = "latest"
-            elif normalized in POPULAR_SEARCH_MODES:
-                section.search_mode = "popular"
-            else:
-                section.search_mode = "popular"
+            section.search_mode = resolve_search_mode(getattr(section, "search_mode", "popular"))
         # tracking to avoid opening many tabs
         self._opened_sections: Set[str] = set()
         self._opened_this_step: bool = False
@@ -577,7 +621,7 @@ class SchedulerWorker(threading.Thread):
         self.logq.put(f"{ts} [{level}] {msg}")
 
     def _is_popular_search_mode(self, mode: str) -> bool:
-        return normalize_search_mode(mode) in POPULAR_SEARCH_MODES
+        return resolve_search_mode(mode) == "popular"
 
     def _activity_scale(self):
         now = datetime.now(CET)
@@ -711,13 +755,7 @@ class SchedulerWorker(threading.Thread):
         self._popular_initial_scroll_pending = False
         section_name = getattr(section, "name", "section")
         raw_mode = getattr(section, "search_mode", "popular")
-        mode_norm = normalize_search_mode(raw_mode)
-        if mode_norm in LATEST_SEARCH_MODES:
-            effective_mode = "latest"
-        elif mode_norm in POPULAR_SEARCH_MODES:
-            effective_mode = "popular"
-        else:
-            effective_mode = "popular"
+        effective_mode = resolve_search_mode(raw_mode)
         section.search_mode = effective_mode
         url = build_search_url(query, effective_mode)
         try:
@@ -726,7 +764,7 @@ class SchedulerWorker(threading.Thread):
         except Exception as e:
             self._log("ERROR", f"Connection check failed: {e}")
             return
-        mode_label = "Latest" if effective_mode == "latest" else "Popular"
+        mode_label = search_mode_label(effective_mode)
         self._log("INFO", f"Open search for {section_name} [{mode_label}]: {url}")
         try:
             if not self._browser_opened:
@@ -854,7 +892,7 @@ class SchedulerWorker(threading.Thread):
         self._log("INFO", f"Night sleep: {self.night_sleep_start} → {self.night_sleep_end}")
         self._log("INFO", f"Daily cap={self.daily_cap} | Hourly cap={self.hourly_cap} | Open policy={self.search_open_policy}")
         modes_summary = ", ".join(
-            f"{section.name}→{'Latest' if section.search_mode == 'latest' else 'Popular'}"
+            f"{section.name}→{search_mode_label(section.search_mode)}"
             for section in self.sections
         )
         if modes_summary:
@@ -890,7 +928,7 @@ class SchedulerWorker(threading.Thread):
                     query_seconds = max(1.0, section.pick_query_duration())
                     query_start = time.monotonic()
                     query_deadline = query_start + query_seconds
-                    mode_label = "Latest" if section.search_mode == "latest" else "Popular"
+                    mode_label = search_mode_label(section.search_mode)
                     self._log(
                         "INFO",
                         f"Section → {section.name} [{mode_label}] (budget {query_seconds:.0f}s)",
@@ -1680,7 +1718,7 @@ class App(tk.Tk):
 
         self._grid_label_with_info(
             row3,
-            "Popular → &f=top; Latest → &f=live. Choose the search filter for each section in its tab. Open policy controls how often a tab is opened.",
+            "Popular → &f=top; Latest → &f=live; Latest without replies → &f=live + -filter:replies. Choose the search filter for each section in its tab. Open policy controls how often a tab is opened.",
             "Reference for how X search filters map to the scheduler's options and how often tabs are opened.",
             row=1,
             column=0,
@@ -2143,11 +2181,8 @@ class App(tk.Tk):
         name_var = tk.StringVar(value=seed_name)
         enabled_var = tk.BooleanVar(value=enabled_default)
 
-        mode_seed = normalize_search_mode(seed.get("search_mode", "popular"))
-        if mode_seed in LATEST_SEARCH_MODES:
-            default_mode_ui = "Latest"
-        else:
-            default_mode_ui = "Popular"
+        mode_seed = resolve_search_mode(seed.get("search_mode", "popular"))
+        default_mode_ui = search_mode_label(mode_seed)
         mode_var = tk.StringVar(value=default_mode_ui)
 
         sv.update(
@@ -2160,7 +2195,7 @@ class App(tk.Tk):
                 "dur_max": v_dur_max,
                 "dur_ignore": v_dur_ignore,
                 "mode_var": mode_var,
-                "default_mode": default_mode_ui,
+                "default_mode": mode_seed,
             }
         )
 
@@ -2195,7 +2230,7 @@ class App(tk.Tk):
         self._grid_label_with_info(
             header,
             "Search filter:",
-            "Choose which X search mode (Popular or Latest) this section uses when opening tabs.",
+            "Choose which X search mode (Popular, Latest, or Latest without replies) this section uses when opening tabs.",
             row=1,
             column=0,
             sticky="w",
@@ -2205,8 +2240,8 @@ class App(tk.Tk):
             header,
             textvariable=mode_var,
             state="readonly",
-            values=["Popular", "Latest"],
-            width=12,
+            values=["Popular", "Latest", "Latest without replies"],
+            width=24,
         )
         mode_cb.grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
         mode_cb.bind("<<ComboboxSelected>>", lambda *_: self._mark_dirty())
@@ -3492,15 +3527,11 @@ class App(tk.Tk):
                 dmin = max(min_minutes, dmin)
                 dmax = max(dmin, dmax)
                 minutes_range = (dmin, dmax)
+            default_mode = sv.get("default_mode", "popular")
             mode_var = sv.get("mode_var")
-            mode_raw = mode_var.get() if mode_var is not None else "popular"
-            mode_norm = normalize_search_mode(mode_raw)
-            if mode_norm in LATEST_SEARCH_MODES:
-                mode_value = "latest"
-            elif mode_norm in POPULAR_SEARCH_MODES:
-                mode_value = "popular"
-            else:
-                mode_value = "popular"
+            default_mode_label = search_mode_label(default_mode)
+            mode_raw = mode_var.get() if mode_var is not None else default_mode_label
+            mode_value = resolve_search_mode(mode_raw, fallback=default_mode)
             q_lines = [ln.strip() for ln in sv["txt_queries"].get("1.0", "end").splitlines() if ln.strip()]
             r_lines = [ln.strip() for ln in sv["txt_responses"].get("1.0", "end").splitlines() if ln.strip()]
             out.append(Section(
@@ -3525,18 +3556,11 @@ class App(tk.Tk):
     def _section_to_dict(self, idx: int, sv: Dict) -> Dict:
         default_name = sv.get("default_name", "Section")
         name = str(sv["name_var"].get()).strip() or default_name
-        default_mode_ui = sv.get("default_mode", "Popular")
-        fallback_norm = normalize_search_mode(default_mode_ui)
-        fallback_mode = "latest" if fallback_norm in LATEST_SEARCH_MODES else "popular"
+        default_mode = sv.get("default_mode", "popular")
         mode_var = sv.get("mode_var")
-        mode_raw = mode_var.get() if mode_var is not None else default_mode_ui
-        mode_norm = normalize_search_mode(mode_raw)
-        if mode_norm in LATEST_SEARCH_MODES:
-            mode_value = "latest"
-        elif mode_norm in POPULAR_SEARCH_MODES:
-            mode_value = "popular"
-        else:
-            mode_value = fallback_mode
+        default_mode_label = search_mode_label(default_mode)
+        mode_raw = mode_var.get() if mode_var is not None else default_mode_label
+        mode_value = resolve_search_mode(mode_raw, fallback=default_mode)
         dur_ignore_var = sv.get("dur_ignore")
         ignore_minutes = bool(dur_ignore_var.get()) if dur_ignore_var is not None else False
         try:
@@ -3693,18 +3717,13 @@ class App(tk.Tk):
                 enabled_value = default_enabled
             sv["enabled_var"].set(bool(enabled_value))
 
-            default_mode_ui = sv.get("default_mode", "Popular")
+            default_mode = sv.get("default_mode", "popular")
+            default_mode_ui = search_mode_label(default_mode)
             mode_value = section_cfg.get("search_mode", None)
             if mode_value is None:
                 ui_mode = default_mode_ui
             else:
-                mode_norm = normalize_search_mode(mode_value)
-                if mode_norm in LATEST_SEARCH_MODES:
-                    ui_mode = "Latest"
-                elif mode_norm in POPULAR_SEARCH_MODES:
-                    ui_mode = "Popular"
-                else:
-                    ui_mode = default_mode_ui
+                ui_mode = search_mode_label(mode_value)
             mode_var = sv.get("mode_var")
             if mode_var is not None:
                 mode_var.set(ui_mode)

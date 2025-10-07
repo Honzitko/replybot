@@ -78,6 +78,18 @@ def test_build_search_url_latest():
     assert url == "https://x.com/search?q=rocket%20science&src=typed_query&f=live"
 
 
+def test_build_search_url_latest_without_replies_adds_filter():
+    url = x.build_search_url("GM -filter:links", "Latest without replies")
+    assert url == (
+        "https://x.com/search?q=GM%20-filter%3Alinks%20-filter%3Areplies&src=typed_query&f=live"
+    )
+
+
+def test_build_search_url_latest_without_replies_respects_existing_filter():
+    url = x.build_search_url("GM -filter:replies", "latest_no_replies")
+    assert url == "https://x.com/search?q=GM%20-filter%3Areplies&src=typed_query&f=live"
+
+
 def test_section_pick_query_cycles_sequentially():
     section = x.Section(name="Test", search_queries=["q1", "q2", "q3"])
 
