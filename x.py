@@ -91,6 +91,9 @@ def similarity_ratio(a: str, b: str) -> float:
 # maximum wait windows to give the page a better chance to settle.
 BASE_WAIT = 5
 MAX_WAIT = 25
+# When slow computer mode is enabled we stretch these waits to give slower
+# machines more breathing room before automation resumes.
+SLOW_COMPUTER_WAIT_MULTIPLIER = 1.5
 
 # Natural pauses inserted between high-level actions to mimic human pacing.
 STEP_PAUSE_MIN = 0.5
@@ -616,6 +619,17 @@ class SchedulerWorker(threading.Thread):
         qb_high = max(qb_low, float(qb_high))
         self.query_break_seconds_range: Tuple[float, float] = (qb_low, qb_high)
 
+        slow_mode = bool(self.cfg.get("slow_computer_mode", False))
+        multiplier = SLOW_COMPUTER_WAIT_MULTIPLIER if slow_mode else 1.0
+        self.page_load_base_wait = BASE_WAIT * multiplier
+        self.page_load_max_wait = MAX_WAIT * multiplier
+        self._slow_computer_mode = slow_mode
+        if slow_mode:
+            self._log(
+                "INFO",
+                "Slow computer mode enabled — extending page load waits for browser navigation.",
+            )
+
     def _log(self, level, msg):
         ts = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
         self.logq.put(f"{ts} [{level}] {msg}")
@@ -782,13 +796,15 @@ class SchedulerWorker(threading.Thread):
             return
         start = time.time()
         waited = 0.0
+        base_wait = getattr(self, "page_load_base_wait", BASE_WAIT)
+        max_wait = getattr(self, "page_load_max_wait", MAX_WAIT)
         while not self.stop_event.is_set():
             self._pauseable_sleep(0.5)
             waited = time.time() - start
-            if waited >= BASE_WAIT and (waited >= elapsed or waited >= MAX_WAIT):
+            if waited >= base_wait and (waited >= elapsed or waited >= max_wait):
                 break
-        if waited >= MAX_WAIT:
-            self._log("WARN", f"Page load wait exceeded {MAX_WAIT}s; consider retry.")
+        if waited >= max_wait:
+            self._log("WARN", f"Page load wait exceeded {max_wait:.0f}s; consider retry.")
         else:
             self._log("INFO", f"Page ready after {waited:.2f}s")
 
@@ -1092,6 +1108,7 @@ class App(tk.Tk):
         self._rss_last_value: Optional[datetime] = None
         self._rss_next_value: Optional[datetime] = None
         self.txt_rss_persona: Optional[scrolledtext.ScrolledText] = None
+        self.var_slow_computer = tk.BooleanVar(value=False)
 
         self.current_profile: Optional[str] = None
         self.dirty: bool = False
@@ -1622,8 +1639,21 @@ class App(tk.Tk):
             title="Unsaved changes",
         ).pack(side="left", padx=(4, 0))
 
+        general_frame = ttk.LabelFrame(f, text="General")
+        general_frame.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
+        self._checkbutton_with_info(
+            general_frame,
+            text="Slow computer mode",
+            variable=self.var_slow_computer,
+            command=self._mark_dirty,
+            info=(
+                "Extends waits after opening search tabs so slower machines have time to render the feed before automation continues."
+            ),
+            pack={"anchor": "w", "padx": 8, "pady": (8, 8)},
+        )
+
         llm_frame = ttk.LabelFrame(f, text="AI RSS summarisation")
-        llm_frame.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
+        llm_frame.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(12, 0))
         llm_frame.columnconfigure(1, weight=1)
 
         self._create_info_button(
@@ -1694,7 +1724,7 @@ class App(tk.Tk):
 
         # Search open policy (search filter now per section)
         row3 = ttk.LabelFrame(f, text="Search")
-        row3.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(12,0))
+        row3.grid(row=4, column=0, columnspan=5, sticky="ew", pady=(12,0))
         row3.columnconfigure(1, weight=1)
         self._create_info_button(
             row3,
@@ -3468,6 +3498,8 @@ class App(tk.Tk):
             "targets_per_step_range": (8, 14),
             # emergency (disabled here)
             "emergency_early_end_probability": 0.0,
+            # platform compatibility
+            "slow_computer_mode": bool(getattr(self, "var_slow_computer", tk.BooleanVar(value=False)).get()),
         }
 
         persona_text = ""
@@ -3610,6 +3642,7 @@ class App(tk.Tk):
 
         self.var_weekday_scale.set(cfg.get("weekday_activity_scale", 1.0))
         self.var_weekend_scale.set(cfg.get("weekend_activity_scale", 0.9))
+        self.var_slow_computer.set(bool(cfg.get("slow_computer_mode", False)))
 
         set_pair(self.var_micro_every_min, self.var_micro_every_max, cfg.get("micro_pause_every_n_actions_range"), (8,12))
         set_pair(self.var_micro_s_min, self.var_micro_s_max, cfg.get("micro_pause_seconds_range"), (2.0,4.0))
