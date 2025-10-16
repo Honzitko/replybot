@@ -1,0 +1,270 @@
+{
+  "config": {
+    "session_hours_range": [
+      12.0,
+      14.0
+    ],
+    "session_step_minutes_range": [
+      12,
+      16
+    ],
+    "session_break_minutes_range": [
+      2,
+      4
+    ],
+    "night_sleep_start_hour_range": [
+      22,
+      24
+    ],
+    "night_sleep_start_minute_jitter": [
+      0,
+      30
+    ],
+    "night_sleep_hours_range": [
+      7.0,
+      8.0
+    ],
+    "micro_pause_every_n_actions_range": [
+      8,
+      12
+    ],
+    "micro_pause_seconds_range": [
+      2.0,
+      4.0
+    ],
+    "weekday_activity_scale": 1.0,
+    "weekend_activity_scale": 0.9,
+    "daily_interaction_cap_range": [
+      1150,
+      1250
+    ],
+    "hourly_interaction_cap_range": [
+      90,
+      110
+    ],
+    "min_seconds_between_actions_range": [
+      0.4,
+      0.9
+    ],
+    "extra_jitter_probability": 0.05,
+    "extra_jitter_seconds_range": [
+      1.0,
+      2.5
+    ],
+    "whitelist_keywords": [],
+    "blacklist_keywords": [],
+    "profanity_list": [],
+    "content_similarity_threshold": 0.9,
+    "uniqueness_memory_size": 200,
+    "transparency_tag_enabled": false,
+    "transparency_tag_text": "— managed account",
+    "search_mode": "popular",
+    "search_open_policy": "once_per_step",
+    "targets_per_step_range": [
+      8,
+      14
+    ],
+    "emergency_early_end_probability": 0.0
+  },
+  "sections": [
+    {
+      "name": "Sharp & Direct",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        6,
+        12
+      ],
+      "search_queries": [
+        "morning performance",
+        "industry trends",
+        "team updates"
+      ],
+      "responses": [
+        "Strong start to the day. Let’s build.",
+        "Morning momentum sets the tone.",
+        "Focused and ready to execute."
+      ]
+    },
+    {
+      "name": "Professional & Brief",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        5,
+        9
+      ],
+      "search_queries": [
+        "client progress",
+        "feature rollouts"
+      ],
+      "responses": [
+        "Starting strong and staying consistent.",
+        "Vision only matters with execution.",
+        "Early action sets the pace."
+      ]
+    },
+    {
+      "name": "Builder Mindset",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        5,
+        10
+      ],
+      "search_queries": [
+        "roadmap items",
+        "dev insights"
+      ],
+      "responses": [
+        "Every task is a brick in the wall.",
+        "Opportunities don’t knock, they’re built.",
+        "Build momentum early."
+      ]
+    },
+    {
+      "name": "Networking & Collab",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        4,
+        8
+      ],
+      "search_queries": [
+        "partner announcements",
+        "collab opportunities"
+      ],
+      "responses": [
+        "Open to smart partnerships—let’s align.",
+        "If you’re building, let’s connect.",
+        "Partnerships create possibilities."
+      ]
+    },
+    {
+      "name": "Motivation Lite",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        5,
+        9
+      ],
+      "search_queries": [
+        "team shoutouts"
+      ],
+      "responses": [
+        "Make it count today.",
+        "Results over opinions.",
+        "Keep stacking small wins."
+      ]
+    },
+    {
+      "name": "Execution Mode",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        6,
+        12
+      ],
+      "search_queries": [
+        "status check",
+        "backlog review"
+      ],
+      "responses": [
+        "The plan is simple: execute.",
+        "Decide, then execute.",
+        "Clarity creates confidence."
+      ]
+    },
+    {
+      "name": "Weekend Chill (still pro)",
+      "typing_ms_per_char": [
+        220,
+        260
+      ],
+      "max_responses_before_switch": [
+        3,
+        6
+      ],
+      "search_queries": [
+        "light topics",
+        "community notes"
+      ],
+      "responses": [
+        "Fresh start, same fire.",
+        "Stay in motion.",
+        "Good energy, good outcomes."
+      ]
+    },
+    {
+      "name": "Insightful & Calm",
+      "typing_ms_per_char": [
+        220,
+        260
+      ],
+      "max_responses_before_switch": [
+        4,
+        8
+      ],
+      "search_queries": [
+        "market notes",
+        "customer wins"
+      ],
+      "responses": [
+        "Focus on what compounds.",
+        "Daily effort writes the future.",
+        "Direction beats speed."
+      ]
+    },
+    {
+      "name": "Fast & To the Point",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        7,
+        13
+      ],
+      "search_queries": [
+        "quick scans"
+      ],
+      "responses": [
+        "Keep it moving.",
+        "Outperform yesterday.",
+        "Push the line forward."
+      ]
+    },
+    {
+      "name": "Creator/Brand Voice",
+      "typing_ms_per_char": [
+        220,
+        240
+      ],
+      "max_responses_before_switch": [
+        5,
+        10
+      ],
+      "search_queries": [
+        "brand mentions",
+        "community threads"
+      ],
+      "responses": [
+        "Let’s turn ideas into outcomes.",
+        "Consistency is the advantage.",
+        "Show up, level up."
+      ]
+    }
+  ]
+}
